@@ -1,0 +1,6 @@
+{
+  "name": "Tinubu Movement Worldwide (TMW) Electoral Ward Registration",
+  "description": "Official digital Electoral Ward Registration Portal for Tinubu Movement Worldwide (TMW) with Google Sheets automation, batch ward sheets, and member verification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
