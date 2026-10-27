@@ -49,7 +49,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       onClose();
       setPinInput("");
     } else {
-      setErrorMsg("Incorrect Coordinator PIN. Default PIN is 2027.");
+      setErrorMsg("Incorrect Coordinator PIN. Please try again.");
     }
   };
 
@@ -111,7 +111,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                       setPinInput(e.target.value);
                       setErrorMsg(null);
                     }}
-                    placeholder="Enter PIN (Default: 2027)"
+                    placeholder="Enter PIN"
                     className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono tracking-widest text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-hidden"
                     autoFocus
                     required
@@ -125,8 +125,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                     {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
-                  <span>Default PIN is <strong>2027</strong></span>
+                <div className="flex items-center justify-end mt-1.5 text-[11px] text-slate-500">
                   <button
                     type="button"
                     onClick={() => setIsChangingPin(true)}
@@ -168,10 +167,10 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                   Set New Coordinator PIN:
                 </label>
                 <input
-                  type="text"
+                  type="password"
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value)}
-                  placeholder="e.g. 8492"
+                  placeholder="Enter new PIN"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono tracking-widest text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-600 outline-hidden"
                   required
                 />
@@ -202,9 +201,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
             </form>
           )}
 
-          {/* Quick Tip for URL access */}
+          {/* Discreet Coordinator hint */}
           <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[10px] text-slate-500">
-            <strong>Pro Tip:</strong> Coordinators can also access admin mode directly by adding <code className="bg-white px-1 py-0.5 rounded text-emerald-800 font-semibold font-mono">?admin=true</code> to the website address.
+            <strong>Note:</strong> Coordinator access allows configuring the Google Sheets webhook endpoint and downloading the complete ward voter registry.
           </div>
         </div>
 

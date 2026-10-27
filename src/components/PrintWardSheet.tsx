@@ -81,9 +81,6 @@ export const PrintWardSheet: React.FC<PrintWardSheetProps> = ({
               <p className="text-xs font-bold text-red-600 mt-0.5">
                 Renewed Hope. Renewed Nigeria. Brighter Future.
               </p>
-              <p className="text-[11px] font-semibold text-slate-700 mt-1">
-                DG: 08038749440 <span className="mx-1">|</span> WhatsApp: +1 (818) 799-1006
-              </p>
             </div>
           </div>
         </div>

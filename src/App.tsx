@@ -22,8 +22,6 @@ import {
 import { TMWLogo } from "./components/TMWLogo";
 import { 
   ShieldCheck, 
-  Phone, 
-  MessageSquare,
   Lock,
   Unlock
 } from "lucide-react";
@@ -246,32 +244,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* Official Helpline preserved at the bottom as requested */}
+          {/* Footer Information & Coordinator Access */}
           <div className="text-center md:text-right flex flex-col items-center md:items-end gap-1.5">
-            <div className="flex flex-wrap items-center justify-center md:justify-end gap-3 text-slate-800 font-semibold">
-              <a
-                href="tel:08038749440"
-                className="flex items-center gap-1 hover:text-[#0D5C3A] transition-colors"
-                title="Call National Helpline"
-              >
-                <Phone className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Helpline: <strong>08038749440</strong></span>
-              </a>
-              <span className="text-slate-300">|</span>
-              <a
-                href="https://wa.me/18187991006"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 hover:text-[#0D5C3A] transition-colors"
-                title="Official WhatsApp"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-700" />
-                <span>WhatsApp: <strong>+1 (818) 799-1006</strong></span>
-              </a>
-            </div>
+            <p className="font-semibold text-slate-800">
+              National Support &amp; Campaign Coordination Institution
+            </p>
 
             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
-              <span>Secure Cloud Integration · No External Database</span>
+              <span>Secure Cloud Integration</span>
               <span>·</span>
               {isAdminMode ? (
                 <button
