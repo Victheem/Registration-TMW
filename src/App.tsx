@@ -11,6 +11,7 @@ import { WardSheetBatchForm } from "./components/WardSheetBatchForm";
 import { SubmissionsTable } from "./components/SubmissionsTable";
 import { RegistrationSlipModal } from "./components/RegistrationSlipModal";
 import { GoogleSheetsModal } from "./components/GoogleSheetsModal";
+import { AdminAuthModal } from "./components/AdminAuthModal";
 import { PrintWardSheet } from "./components/PrintWardSheet";
 import { RegistrationRecord, WardSheetHeader, WardSheetRow } from "./types";
 import { 
@@ -21,21 +22,29 @@ import {
 import { TMWLogo } from "./components/TMWLogo";
 import { 
   ShieldCheck, 
-  CheckCircle, 
-  FileSpreadsheet, 
   Phone, 
   MessageSquare,
-  Users,
-  Building,
-  Vote
+  Lock,
+  Unlock
 } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "print_preview">("individual");
   const [records, setRecords] = useState<RegistrationRecord[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<RegistrationRecord | null>(null);
   const [scriptUrl, setScriptUrl] = useState<string>("");
+
+  // Coordinator Mode (Hidden from public by default)
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("admin") === "true" || window.location.hash === "#admin") {
+      return true;
+    }
+    return sessionStorage.getItem("tmw_admin_mode") === "true";
+  });
 
   // Print data state
   const [printData, setPrintData] = useState<{
@@ -66,6 +75,13 @@ export default function App() {
     const loadedRecords = getStoredRegistrations();
     setRecords(loadedRecords);
   }, []);
+
+  // Redirect to individual tab if registry tab is requested while in public view
+  useEffect(() => {
+    if (activeTab === "registry" && !isAdminMode) {
+      setActiveTab("individual");
+    }
+  }, [activeTab, isAdminMode]);
 
   const refreshRecords = () => {
     setRecords(getStoredRegistrations());
@@ -100,22 +116,37 @@ export default function App() {
     setActiveTab("print_preview");
   };
 
+  const handleUnlockAdmin = () => {
+    setIsAdminMode(true);
+    sessionStorage.setItem("tmw_admin_mode", "true");
+  };
+
+  const handleExitAdminMode = () => {
+    setIsAdminMode(false);
+    sessionStorage.removeItem("tmw_admin_mode");
+    if (activeTab === "registry") {
+      setActiveTab("individual");
+    }
+  };
+
   const pageCopy = {
-    individual: { eyebrow: "MEMBER INTAKE", title: "Electoral ward registration", detail: "National grassroots member directory" },
-    ward_sheet: { eyebrow: "COORDINATOR WORKSPACE", title: "Ward sheet intake", detail: "Register members in batches of 20" },
-    registry: { eyebrow: "RECORDS & FOLLOW-UP", title: "Local registration registry", detail: "Review, export, and sync saved records" },
-    print_preview: { eyebrow: "DOCUMENT OUTPUT", title: "Official ward sheet", detail: "Review the print layout before exporting" },
+    individual: { eyebrow: "MEMBER INTAKE", title: "Electoral Ward Registration", detail: "National grassroots member directory" },
+    ward_sheet: { eyebrow: "COORDINATOR WORKSPACE", title: "Ward Sheet Intake", detail: "Register members in batches of 20" },
+    registry: { eyebrow: "RECORDS & FOLLOW-UP", title: "Electoral Ward Registry", detail: "Review, export, and sync saved records" },
+    print_preview: { eyebrow: "DOCUMENT OUTPUT", title: "Official Ward Sheet", detail: "Review the print layout before exporting" },
   }[activeTab];
 
   return (
     <div className="app-shell min-h-screen flex flex-col font-sans text-slate-900">
-      {/* Top Brand Header */}
+      {/* Top Brand Header (Cleaned of top bar phone/WhatsApp; hides Connect Google Sheet & Registry in public view) */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         openSettings={() => setIsSettingsOpen(true)}
         isBackendConnected={Boolean(scriptUrl)}
         totalRegistered={records.length}
+        isAdminMode={isAdminMode}
+        onExitAdminMode={handleExitAdminMode}
       />
 
       {/* Main Content Area */}
@@ -138,6 +169,7 @@ export default function App() {
             onSuccess={handleSingleSuccess}
             openSettings={() => setIsSettingsOpen(true)}
             isBackendConnected={Boolean(scriptUrl)}
+            isAdminMode={isAdminMode}
           />
         )}
 
@@ -150,7 +182,8 @@ export default function App() {
           />
         )}
 
-        {activeTab === "registry" && (
+        {/* Registry Database view is only accessible when in Coordinator Mode */}
+        {activeTab === "registry" && isAdminMode && (
           <SubmissionsTable
             records={records}
             onRefresh={refreshRecords}
@@ -191,11 +224,18 @@ export default function App() {
         onUrlUpdated={(newUrl) => setScriptUrl(newUrl)}
       />
 
-      {/* Official Footer */}
-      <footer className="mt-12 border-t border-emerald-950/10 bg-white/90 py-7 text-xs text-slate-600 print:hidden">
+      {/* Coordinator / Admin Passcode Modal */}
+      <AdminAuthModal
+        isOpen={isAdminAuthOpen}
+        onClose={() => setIsAdminAuthOpen(false)}
+        onUnlock={handleUnlockAdmin}
+      />
+
+      {/* Official Footer with the Coordination Helpline */}
+      <footer className="mt-12 border-t border-emerald-950/10 bg-white/95 py-7 text-xs text-slate-600 print:hidden shadow-xs">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <TMWLogo size={42} />
+            <TMWLogo size={46} />
             <div>
               <p className="font-extrabold text-[#0D5C3A] text-sm">
                 TINUBU MOVEMENT WORLDWIDE (TMW)
@@ -206,13 +246,54 @@ export default function App() {
             </div>
           </div>
 
-          <div className="text-center md:text-right">
-            <p className="font-semibold text-slate-800">
-              National Headquarters Coordination Line: 08038749440
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Secure Google Apps Script Cloud Integration · No External Database Dependency
-            </p>
+          {/* Official Helpline preserved at the bottom as requested */}
+          <div className="text-center md:text-right flex flex-col items-center md:items-end gap-1.5">
+            <div className="flex flex-wrap items-center justify-center md:justify-end gap-3 text-slate-800 font-semibold">
+              <a
+                href="tel:08038749440"
+                className="flex items-center gap-1 hover:text-[#0D5C3A] transition-colors"
+                title="Call National Helpline"
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Helpline: <strong>08038749440</strong></span>
+              </a>
+              <span className="text-slate-300">|</span>
+              <a
+                href="https://wa.me/18187991006"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 hover:text-[#0D5C3A] transition-colors"
+                title="Official WhatsApp"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-700" />
+                <span>WhatsApp: <strong>+1 (818) 799-1006</strong></span>
+              </a>
+            </div>
+
+            <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
+              <span>Secure Cloud Integration · No External Database</span>
+              <span>·</span>
+              {isAdminMode ? (
+                <button
+                  type="button"
+                  onClick={handleExitAdminMode}
+                  className="text-red-700 hover:text-red-900 font-bold hover:underline flex items-center gap-1"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Exit Coordinator Mode</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsAdminAuthOpen(true)}
+                  className="text-emerald-800 hover:text-emerald-950 font-semibold hover:underline flex items-center gap-1"
+                  title="Unlock Google Sheet settings & registry database"
+                >
+                  <Lock className="w-3 h-3 text-emerald-700" />
+                  <span>Coordinator Login</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

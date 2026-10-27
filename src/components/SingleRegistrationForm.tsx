@@ -33,12 +33,14 @@ interface SingleRegistrationFormProps {
   onSuccess: (record: RegistrationRecord) => void;
   openSettings: () => void;
   isBackendConnected: boolean;
+  isAdminMode?: boolean;
 }
 
 export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
   onSuccess,
   openSettings,
   isBackendConnected,
+  isAdminMode = false,
 }) => {
   // Form State
   const [stateName, setStateName] = useState("Lagos");
@@ -220,13 +222,13 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
           </div>
         </div>
 
-        {/* Backend notice if not connected */}
-        {!isBackendConnected && (
+        {/* Backend notice if not connected (VISIBLE ONLY TO COORDINATOR / ADMIN) */}
+        {isAdminMode && !isBackendConnected && (
           <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex items-center justify-between text-xs text-amber-900">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
-                <strong>Offline / Local Queue Mode:</strong> No Google Sheet URL connected. Records will be safely saved in local memory.
+                <strong>Coordinator Notice:</strong> No Google Sheet URL connected. Submissions are temporarily saving to local device memory.
               </span>
             </div>
             <button

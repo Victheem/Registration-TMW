@@ -184,7 +184,9 @@ function createJsonResponse(data) {
  */
 export function getSavedScriptUrl(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(DEFAULT_SCRIPT_STORAGE_KEY) || "";
+  const stored = localStorage.getItem(DEFAULT_SCRIPT_STORAGE_KEY);
+  if (stored && stored.trim()) return stored.trim();
+  return (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL || "";
 }
 
 /**

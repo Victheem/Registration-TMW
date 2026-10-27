@@ -248,66 +248,110 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
           </div>
 
           {/* Step-by-Step Instructions */}
-          <div className="space-y-3">
+          <div className="space-y-4">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
               <HelpCircle className="w-4 h-4 text-[#0D5C3A]" />
-              <span>5-Minute Step-by-Step Google Sheet Setup Guide</span>
+              <span>Step-by-Step Google Sheet Connection Walkthrough</span>
             </h4>
 
-            <ol className="space-y-3 text-xs leading-relaxed">
-              <li className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200">
-                <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">1</span>
-                <div>
-                  <strong className="text-slate-900 font-semibold">Create your Google Sheet:</strong>
-                  <p className="text-slate-600">
-                    Open <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-semibold inline-flex items-center gap-0.5">Google Sheets <ExternalLink className="w-3 h-3" /></a> and title it <em>"TMW Electoral Ward Registrations 2027"</em>.
-                  </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs leading-relaxed">
+              
+              {/* Step 1 */}
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">1</span>
+                  <strong className="text-slate-900 font-bold">Create New Google Sheet</strong>
                 </div>
-              </li>
-
-              <li className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200">
-                <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">2</span>
-                <div>
-                  <strong className="text-slate-900 font-semibold">Open Apps Script:</strong>
-                  <p className="text-slate-600">
-                    In the top menu bar of your Google Sheet, click <strong>Extensions</strong> &gt; <strong>Apps Script</strong>.
-                  </p>
+                <p className="text-slate-600 text-[11px]">
+                  Go to <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-semibold inline-flex items-center gap-0.5">sheets.new <ExternalLink className="w-3 h-3" /></a> to open a fresh sheet. Name it:
+                </p>
+                <div className="bg-slate-100 px-2.5 py-1 rounded text-[11px] font-mono text-slate-800 font-semibold">
+                  TMW Electoral Ward Registrations 2027
                 </div>
-              </li>
+                <p className="text-[10px] text-slate-400">
+                  (Leave the sheet empty — our script automatically creates headers and green styling on first submission!)
+                </p>
+              </div>
 
-              <li className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200">
-                <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">3</span>
-                <div>
-                  <strong className="text-slate-900 font-semibold">Paste Code &amp; Save:</strong>
-                  <p className="text-slate-600">
-                    Select and delete any default template code inside <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">Code.gs</code>, click the <strong>"Copy Apps Script Code"</strong> button above, paste it into the editor, and click the disk icon to save.
-                  </p>
+              {/* Step 2 */}
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">2</span>
+                  <strong className="text-slate-900 font-bold">Open Apps Script Editor</strong>
                 </div>
-              </li>
-
-              <li className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200">
-                <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">4</span>
-                <div>
-                  <strong className="text-slate-900 font-semibold">Deploy as Web App:</strong>
-                  <p className="text-slate-600">
-                    Click the blue <strong>Deploy</strong> button (top right) &gt; <strong>New deployment</strong>. Under <em>Select type</em> choose <strong>Web app</strong>.
-                  </p>
-                  <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded text-amber-900 text-[11px]">
-                    <strong>Important:</strong> Set <em>"Execute as"</em> to <strong>Me</strong> and set <em>"Who has access"</em> to <strong>Anyone</strong>. Then click <strong>Deploy</strong> and approve permissions.
-                  </div>
+                <p className="text-slate-600 text-[11px]">
+                  In your Google Sheet top menu, click:
+                </p>
+                <div className="bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded text-[11px] font-semibold text-emerald-900">
+                  Extensions ➔ Apps Script
                 </div>
-              </li>
+                <p className="text-[10px] text-slate-500">
+                  A new browser tab titled <em>"Untitled project"</em> will open with a code editor.
+                </p>
+              </div>
 
-              <li className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white border border-slate-200">
+              {/* Step 3 */}
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">3</span>
+                  <strong className="text-slate-900 font-bold">Paste Code &amp; Save</strong>
+                </div>
+                <p className="text-slate-600 text-[11px]">
+                  In the code editor:
+                </p>
+                <ul className="list-disc list-inside text-[11px] text-slate-600 space-y-0.5">
+                  <li>Select all default code in <code className="bg-slate-100 px-1 rounded">Code.gs</code> and delete it.</li>
+                  <li>Click the green <strong>"Copy Apps Script Code"</strong> button above.</li>
+                  <li>Paste into <code className="bg-slate-100 px-1 rounded">Code.gs</code>.</li>
+                  <li>Click the <strong>Disk icon (Save)</strong> or press <kbd className="bg-slate-100 px-1 rounded">Ctrl+S</kbd> / <kbd className="bg-slate-100 px-1 rounded">Cmd+S</kbd>.</li>
+                </ul>
+              </div>
+
+              {/* Step 4 */}
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">4</span>
+                  <strong className="text-slate-900 font-bold">Deploy as Web App</strong>
+                </div>
+                <p className="text-slate-600 text-[11px]">
+                  At the top right of Apps Script, click the blue <strong>Deploy</strong> button ➔ <strong>New deployment</strong>:
+                </p>
+                <div className="space-y-1 text-[11px] bg-slate-50 p-2 rounded border border-slate-200">
+                  <div>• <strong>Select type:</strong> Click gear icon ➔ select <strong>Web app</strong></div>
+                  <div>• <strong>Description:</strong> TMW Ward Registration</div>
+                  <div>• <strong>Execute as:</strong> <span className="font-bold text-emerald-800">Me (your email)</span></div>
+                  <div>• <strong>Who has access:</strong> <span className="font-bold text-red-600 bg-red-50 px-1 rounded">Anyone</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Crucial Google Authorization Callout */}
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>How to Bypass Google's "Google hasn't verified this app" Screen:</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                When you click Deploy for the first time, Google will ask to authorize permissions:
+              </p>
+              <ol className="list-decimal list-inside text-[11px] space-y-1 pl-1">
+                <li>Click <strong>"Authorize access"</strong> and choose your Google Account.</li>
+                <li>When the warning screen appears saying <em>"Google hasn't verified this app"</em>, click the small link labeled <strong>"Advanced"</strong> at the bottom left.</li>
+                <li>Click <strong>"Go to Untitled project (unsafe)"</strong>.</li>
+                <li>Click <strong>"Allow"</strong> to grant your own script permission to write rows to your Google Sheet.</li>
+              </ol>
+            </div>
+
+            {/* Step 5 */}
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 space-y-2">
+              <div className="flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-[#0D5C3A] text-white font-bold text-[11px] flex items-center justify-center shrink-0">5</span>
-                <div>
-                  <strong className="text-slate-900 font-semibold">Paste Web App URL:</strong>
-                  <p className="text-slate-600">
-                    Copy the resulting Web App URL (ending in <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">/exec</code>), paste it into the input box above, and click <strong>"Save URL"</strong>!
-                  </p>
-                </div>
-              </li>
-            </ol>
+                <strong className="text-emerald-900 font-bold">Copy Web App URL &amp; Connect to This App</strong>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Copy the generated Web App URL (it will look like <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[10px]">https://script.google.com/macros/s/AKfycb.../exec</code>), paste it into the <strong>"Google Apps Script Web App URL"</strong> box above, and click <strong>"Save URL"</strong>!
+              </p>
+            </div>
           </div>
 
         </div>
