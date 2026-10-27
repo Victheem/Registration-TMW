@@ -15,7 +15,9 @@ import {
   Building,
   CreditCard,
   MapPin,
-  Calendar
+  Calendar,
+  Star,
+  Users
 } from "lucide-react";
 
 interface RegistrationSlipModalProps {
@@ -97,8 +99,34 @@ export const RegistrationSlipModal: React.FC<RegistrationSlipModalProps> = ({
               </div>
             </div>
 
-            <div className="text-center py-1 mb-3 bg-[#0D5C3A] text-white rounded font-bold text-xs tracking-wider uppercase">
+            <div className="text-center py-1 mb-2 bg-[#0D5C3A] text-white rounded font-bold text-xs tracking-wider uppercase">
               ELECTORAL WARD REGISTRATION VERIFICATION
+            </div>
+
+            {/* EXCO vs Non-EXCO Role Classification */}
+            <div className={`p-2.5 rounded-lg border mb-3 flex items-center justify-between ${
+              record.isExco
+                ? "bg-amber-50 border-amber-300 text-amber-950"
+                : "bg-emerald-50 border-emerald-200 text-emerald-950"
+            }`}>
+              <div className="flex items-center gap-2">
+                {record.isExco ? (
+                  <Star className="w-4 h-4 text-amber-600 fill-amber-500 shrink-0" />
+                ) : (
+                  <Users className="w-4 h-4 text-emerald-700 shrink-0" />
+                )}
+                <div>
+                  <span className="text-[9px] uppercase font-bold tracking-wider block opacity-75">
+                    {record.isExco ? `Official EXCO Member · ${record.excoLevel || "Ward"} Level` : "Grassroots Member (Non-EXCO)"}
+                  </span>
+                  <span className="text-xs font-extrabold text-slate-900">{record.role || (record.isExco ? "Executive Committee Officer" : "General Member")}</span>
+                </div>
+              </div>
+              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                record.isExco ? "bg-amber-200 text-amber-900" : "bg-emerald-100 text-emerald-800"
+              }`}>
+                {record.isExco ? "EXCO" : "MEMBER"}
+              </span>
             </div>
 
             {/* Slip Data Grid */}

@@ -10,9 +10,12 @@ import {
   isValidAccountNumber, 
   generateReferenceId, 
   formatNigerianPhone,
-  isValidVIN
+  isValidVIN,
+  EXCO_LEVELS,
+  STANDARD_EXCO_ROLES_BY_LEVEL,
+  STANDARD_NON_EXCO_ROLES
 } from "../data/nigeriaData";
-import { RegistrationRecord } from "../types";
+import { RegistrationRecord, ExcoLevel } from "../types";
 import { submitRegistration } from "../services/googleSheetsService";
 import { 
   CheckCircle2, 
@@ -25,7 +28,10 @@ import {
   Phone, 
   FileCheck,
   Send,
-  RotateCcw
+  RotateCcw,
+  Award,
+  Users,
+  Star
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -42,18 +48,31 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
   isBackendConnected,
   isAdminMode = false,
 }) => {
-  // Form State
+  // Electoral Jurisdiction
   const [stateName, setStateName] = useState("Lagos");
   const [lga, setLga] = useState("Ikeja");
   const [customLga, setCustomLga] = useState("");
   const [ward, setWard] = useState("");
+
+  // Role & EXCO Distinction
+  const [isExco, setIsExco] = useState(false);
+  const [excoLevel, setExcoLevel] = useState<ExcoLevel>("Ward");
+  const [selectedExcoRole, setSelectedExcoRole] = useState(STANDARD_EXCO_ROLES_BY_LEVEL["Ward"][0]);
+  const [selectedNonExcoRole, setSelectedNonExcoRole] = useState(STANDARD_NON_EXCO_ROLES[0]);
+  const [customRole, setCustomRole] = useState("");
+
+  // Member Credentials
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [vin, setVin] = useState("");
   const [pollingUnit, setPollingUnit] = useState("");
+
+  // Banking Details
   const [bankName, setBankName] = useState("Access Bank");
   const [customBank, setCustomBank] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+
+  // Sign-off
   const [signatureName, setSignatureName] = useState("");
   const [hasConsent, setHasConsent] = useState(true);
 
@@ -77,6 +96,17 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
     setCustomLga("");
   };
 
+  const handleExcoLevelChange = (lvl: ExcoLevel) => {
+    setExcoLevel(lvl);
+    const levelKey = lvl === "None" ? "Ward" : lvl;
+    const defaultForLevel = STANDARD_EXCO_ROLES_BY_LEVEL[levelKey]?.[0] || "Executive Member";
+    setSelectedExcoRole(defaultForLevel);
+    setCustomRole("");
+  };
+
+  const isOtherExcoRole = selectedExcoRole.includes("Other");
+  const isOtherNonExcoRole = selectedNonExcoRole.includes("Other");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
@@ -84,6 +114,10 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
     // Validation
     const effectiveLga = lga === "OTHER" ? customLga.trim() : lga.trim();
     const effectiveBank = bankName === "Other / Microfinance Bank" ? customBank.trim() : bankName.trim();
+
+    const effectiveRole = isExco
+      ? (isOtherExcoRole ? (customRole.trim() || selectedExcoRole) : selectedExcoRole)
+      : (isOtherNonExcoRole ? (customRole.trim() || selectedNonExcoRole) : selectedNonExcoRole);
 
     if (!stateName) {
       setFeedback({ type: "error", message: "Please select your State." });
@@ -143,13 +177,15 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
       accountNumber: accountNumber.trim(),
       signature: signatureName.trim() || fullName.trim(),
       timestamp: new Date().toISOString(),
-      status: "pending"
+      status: "pending",
+      isExco,
+      excoLevel: isExco ? excoLevel : "None",
+      role: effectiveRole
     };
 
     try {
       const res = await submitRegistration(record);
       
-      // Fire celebration confetti
       try {
         confetti({
           particleCount: 50,
@@ -157,9 +193,7 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
           origin: { y: 0.6 },
           colors: ["#0D5C3A", "#F59E0B", "#DC2626", "#10B981"]
         });
-      } catch {
-        // canvas-confetti fallback
-      }
+      } catch {}
 
       setFeedback({
         type: "success",
@@ -168,12 +202,13 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
 
       onSuccess(record);
 
-      // Reset member-specific fields, retaining State, LGA and Ward for fast repeated registration
+      // Reset member-specific fields, retaining State, LGA, Ward for fast repetitive entries
       setFullName("");
       setPhone("");
       setVin("");
       setAccountNumber("");
       setSignatureName("");
+      setCustomRole("");
     } catch (err: any) {
       setFeedback({
         type: "error",
@@ -192,6 +227,7 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
       setPollingUnit("");
       setAccountNumber("");
       setSignatureName("");
+      setCustomRole("");
       setFeedback(null);
     }
   };
@@ -330,12 +366,204 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
             </div>
           </div>
 
-          {/* Section 2: Member Personal & Voter Information */}
+          {/* Section 2: Membership Role & EXCO Distinction (NEW) */}
+          <div className="bg-slate-50/70 p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between pb-2 mb-4 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Award className="w-4 h-4 text-[#0D5C3A]" />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
+                  2. Membership Role &amp; EXCO Classification
+                </h3>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-500">
+                Official Hierarchy &amp; Portfolios
+              </span>
+            </div>
+
+            {/* EXCO vs Non-EXCO Switch Buttons */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
+                Is this member an EXCO (Executive Committee) Member? <span className="text-red-500">*</span>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Non-EXCO Card */}
+                <button
+                  type="button"
+                  onClick={() => setIsExco(false)}
+                  className={`p-3.5 rounded-lg border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                    !isExco
+                      ? "bg-white border-[#0D5C3A] ring-2 ring-[#0D5C3A]/20 shadow-xs"
+                      : "bg-white/60 border-slate-200 hover:bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <div className={`p-2 rounded-md shrink-0 mt-0.5 ${!isExco ? "bg-emerald-100 text-[#0D5C3A]" : "bg-slate-100 text-slate-500"}`}>
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-900">Non-EXCO Member</span>
+                      {!isExco && (
+                        <span className="text-[10px] bg-emerald-100 text-[#0D5C3A] font-bold px-1.5 py-0.2 rounded">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      General Member, Grassroots Mobilizer, Supporter, or Volunteer
+                    </p>
+                  </div>
+                </button>
+
+                {/* EXCO Card */}
+                <button
+                  type="button"
+                  onClick={() => setIsExco(true)}
+                  className={`p-3.5 rounded-lg border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                    isExco
+                      ? "bg-white border-amber-500 ring-2 ring-amber-500/20 shadow-xs"
+                      : "bg-white/60 border-slate-200 hover:bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <div className={`p-2 rounded-md shrink-0 mt-0.5 ${isExco ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                    <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-900">EXCO Member</span>
+                      {isExco && (
+                        <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded">
+                          Executive Official
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Holds an Executive Committee office at Ward, LGA, State, or National level
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Role Fields based on EXCO choice */}
+            {isExco ? (
+              <div className="p-4 bg-amber-50/60 border border-amber-200/80 rounded-lg space-y-4">
+                <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
+                  <Star className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
+                  <span>Executive Committee Details</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* EXCO Level */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      EXCO Administrative Level <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={excoLevel}
+                      onChange={(e) => handleExcoLevelChange(e.target.value as ExcoLevel)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-amber-500"
+                    >
+                      {EXCO_LEVELS.map((lvl) => (
+                        <option key={lvl.value} value={lvl.value}>
+                          {lvl.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Select level where the executive portfolio is held
+                    </span>
+                  </div>
+
+                  {/* Specific EXCO Role */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      Executive Portfolio / Role <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={selectedExcoRole}
+                      onChange={(e) => setSelectedExcoRole(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500"
+                    >
+                      {(STANDARD_EXCO_ROLES_BY_LEVEL[excoLevel === "None" ? "Ward" : excoLevel] || []).map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Official Executive Office assigned
+                    </span>
+                  </div>
+                </div>
+
+                {isOtherExcoRole && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      Specify Executive Office Title:
+                    </label>
+                    <input
+                      type="text"
+                      value={customRole}
+                      onChange={(e) => setCustomRole(e.target.value)}
+                      placeholder="e.g. Ward Special Adviser / Liaison"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-amber-500"
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-lg space-y-3">
+                <div className="flex items-center gap-2 text-emerald-900 text-xs font-bold">
+                  <Users className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Grassroots Member Role</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                      Member Designation / Role <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={selectedNonExcoRole}
+                      onChange={(e) => setSelectedNonExcoRole(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-600"
+                    >
+                      {STANDARD_NON_EXCO_ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {isOtherNonExcoRole && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        Specify Role Title:
+                      </label>
+                      <input
+                        type="text"
+                        value={customRole}
+                        onChange={(e) => setCustomRole(e.target.value)}
+                        placeholder="e.g. Grassroots Youth Mobilizer"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-emerald-600"
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section 3: Member Personal & Voter Information */}
           <div>
             <div className="flex items-center gap-2 pb-2 mb-4 border-b border-slate-200">
               <User className="w-4 h-4 text-[#0D5C3A]" />
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-                2. Member &amp; Voter Credentials
+                3. Member &amp; Voter Credentials
               </h3>
             </div>
 
@@ -368,14 +596,14 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0803 123 4567 or +234..."
+                    placeholder="0803 123 4567"
                     className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 focus:bg-white transition-all"
                     required
                   />
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 </div>
                 <span className="text-[11px] text-slate-500 mt-1 block">
-                  Active WhatsApp / GSM contact for coordination
+                  Active contact for campaign coordination
                 </span>
               </div>
 
@@ -422,12 +650,12 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Remuneration & Banking Details */}
+          {/* Section 4: Financial & Banking Details */}
           <div>
             <div className="flex items-center gap-2 pb-2 mb-4 border-b border-slate-200">
               <CreditCard className="w-4 h-4 text-[#0D5C3A]" />
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-                3. Financial &amp; Bank Account Information
+                4. Financial &amp; Bank Account Information
               </h3>
             </div>
 
@@ -489,12 +717,12 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
             </div>
           </div>
 
-          {/* Section 4: Signature / Sign-off */}
+          {/* Section 5: Signature / Sign-off */}
           <div>
             <div className="flex items-center gap-2 pb-2 mb-4 border-b border-slate-200">
               <FileCheck className="w-4 h-4 text-[#0D5C3A]" />
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-                4. Sign-off &amp; Endorsement
+                5. Sign-off &amp; Endorsement
               </h3>
             </div>
 

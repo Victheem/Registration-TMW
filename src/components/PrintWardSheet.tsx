@@ -30,7 +30,9 @@ export const PrintWardSheet: React.FC<PrintWardSheetProps> = ({
       pollingUnit: "",
       bank: "",
       accountNo: "",
-      sign: ""
+      sign: "",
+      role: "",
+      isExco: false,
     }))
   ];
 
@@ -113,14 +115,15 @@ export const PrintWardSheet: React.FC<PrintWardSheetProps> = ({
           <table className="w-full border-collapse border border-slate-400 text-[10px] sm:text-[11px]">
             <thead>
               <tr className="bg-[#0D5C3A] text-white font-bold uppercase text-center">
-                <th className="border border-emerald-700 py-1.5 px-1 w-8">S/N</th>
-                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[150px]">NAMES</th>
-                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[100px]">PHONE</th>
-                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[130px]">VOTER'S CARD NO.</th>
-                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[120px]">POLLING UNIT</th>
-                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[90px]">BANK</th>
-                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[100px]">ACCOUNT NO.</th>
-                <th className="border border-emerald-700 py-1.5 px-1 min-w-[60px]">SIGN</th>
+                <th className="border border-emerald-700 py-1.5 px-1 w-7">S/N</th>
+                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[130px]">NAMES</th>
+                <th className="border border-emerald-700 py-1.5 px-1.5 text-left min-w-[110px]">ROLE / EXCO</th>
+                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[95px]">PHONE</th>
+                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[120px]">VOTER'S CARD NO.</th>
+                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[100px]">POLLING UNIT</th>
+                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[80px]">BANK</th>
+                <th className="border border-emerald-700 py-1.5 px-2 text-left min-w-[90px]">ACCOUNT NO.</th>
+                <th className="border border-emerald-700 py-1.5 px-1 min-w-[50px]">SIGN</th>
               </tr>
             </thead>
             <tbody>
@@ -131,6 +134,15 @@ export const PrintWardSheet: React.FC<PrintWardSheetProps> = ({
                   </td>
                   <td className="border border-slate-300 py-0.5 px-2 font-medium truncate">
                     {r.names}
+                  </td>
+                  <td className="border border-slate-300 py-0.5 px-1.5 truncate text-[10px]">
+                    {r.role ? (
+                      <span className={r.isExco ? "font-bold text-amber-800" : "text-slate-700"}>
+                        {r.isExco ? "★ " : ""}{r.role}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 italic text-[9px]">—</span>
+                    )}
                   </td>
                   <td className="border border-slate-300 py-0.5 px-2 font-mono truncate">
                     {r.phone}

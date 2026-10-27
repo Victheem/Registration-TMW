@@ -2,6 +2,8 @@
  * Data Types for Tinubu Movement Worldwide (TMW) Electoral Ward Registration Form
  */
 
+export type ExcoLevel = 'National' | 'State' | 'LGA' | 'Ward' | 'None';
+
 export interface RegistrationRecord {
   id: string;
   referenceId: string;
@@ -17,11 +19,17 @@ export interface RegistrationRecord {
   signature: string;
   timestamp: string;
   status: 'synced' | 'pending' | 'local_saved';
+  // EXCO vs Non-EXCO distinction at all administrative levels
+  isExco: boolean;
+  excoLevel: ExcoLevel;
+  role: string;
 }
 
 export interface WardSheetRow {
   sn: number;
   names: string;
+  role?: string;
+  isExco?: boolean;
   phone: string;
   vin: string;
   pollingUnit: string;

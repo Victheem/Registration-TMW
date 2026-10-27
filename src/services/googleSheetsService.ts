@@ -73,6 +73,10 @@ function doPost(e) {
       for (var i = 0; i < payload.records.length; i++) {
         var rec = payload.records[i];
         if (!rec.fullName && !rec.names && !rec.phone) continue; // skip blank rows
+        var isExcoText = rec.isExco ? "EXCO" : "Non-EXCO";
+        var excoLevelText = rec.excoLevel || (rec.isExco ? "Ward" : "None");
+        var roleText = rec.role || (rec.isExco ? "Ward EXCO Member" : "General Member (Non-EXCO)");
+
         rows.push([
           formattedDate,
           rec.referenceId || ("TMW-BATCH-" + Utilities.getUuid().substring(0, 8).toUpperCase()),
@@ -80,6 +84,9 @@ function doPost(e) {
           rec.lga || payload.lga || "",
           rec.ward || payload.ward || "",
           rec.fullName || rec.names || "",
+          isExcoText,
+          excoLevelText,
+          roleText,
           rec.phone ? "'" + rec.phone : "",
           rec.vin ? "'" + rec.vin : "",
           rec.pollingUnit || "",
@@ -96,6 +103,10 @@ function doPost(e) {
       }
     } else {
       // Handle single individual registration
+      var singleIsExcoText = payload.isExco ? "EXCO" : "Non-EXCO";
+      var singleExcoLevelText = payload.excoLevel || (payload.isExco ? "Ward" : "None");
+      var singleRoleText = payload.role || (payload.isExco ? "Ward EXCO Member" : "General Member (Non-EXCO)");
+
       var singleRow = [
         formattedDate,
         payload.referenceId || ("TMW-" + Utilities.getUuid().substring(0, 8).toUpperCase()),
@@ -103,6 +114,9 @@ function doPost(e) {
         payload.lga || "",
         payload.ward || "",
         payload.fullName || payload.names || "",
+        singleIsExcoText,
+        singleExcoLevelText,
+        singleRoleText,
         payload.phone ? "'" + payload.phone : "",
         payload.vin ? "'" + payload.vin : "",
         payload.pollingUnit || "",
@@ -141,13 +155,13 @@ function doGet(e) {
     institution: "Tinubu Movement Worldwide (TMW)",
     service: "Electoral Ward Registration Webhook API",
     motto: "Renewed Hope. Renewed Nigeria. Brighter Future.",
-    version: "2.4.0",
+    version: "2.5.0",
     time: new Date().toISOString()
   });
 }
 
 /**
- * Creates standardized header row with TMW corporate styling
+ * Creates standardized header row with TMW corporate styling and EXCO/Role tracking
  */
 function setupSheetHeaders(sheet) {
   var headers = [
@@ -157,6 +171,9 @@ function setupSheetHeaders(sheet) {
     "LGA",
     "Electoral Ward",
     "Full Name / Names",
+    "Membership Classification",
+    "Executive Level",
+    "Official Role / Designation",
     "Phone Number",
     "Voter's Card Number (VIN)",
     "Polling Unit",
@@ -180,7 +197,7 @@ function createJsonResponse(data) {
 `;
 
 /**
- * Retrieves the currently saved Web App URL from localStorage
+ * Retrieves the currently saved Web App URL from localStorage or env
  */
 export function getSavedScriptUrl(): string {
   if (typeof window === "undefined") return "";
@@ -241,19 +258,15 @@ export async function submitRegistration(record: RegistrationRecord): Promise<{
   }
 
   try {
-    // We send payload as text/plain with JSON body.
-    // Google Apps Script can parse this via e.postData.contents,
-    // avoiding CORS preflight errors in modern browsers!
     await fetch(scriptUrl, {
       method: "POST",
-      mode: "no-cors", // Crucial for Google Apps Script redirects
+      mode: "no-cors",
       headers: {
         "Content-Type": "text/plain;charset=utf-8",
       },
       body: JSON.stringify(record),
     });
 
-    // In 'no-cors' mode, browser returns opaque response, which indicates successful transmission.
     const updated = [{ ...record, status: 'synced' as const }, ...existingRecords];
     saveStoredRegistrations(updated);
 
@@ -290,23 +303,30 @@ export async function submitBatchWardSheet(
   const scriptUrl = getSavedScriptUrl();
   const timestamp = new Date().toISOString();
 
-  // Map into RegistrationRecords
-  const mappedRecords: RegistrationRecord[] = validRows.map((row, idx) => ({
-    id: `batch-${Date.now()}-${idx}`,
-    referenceId: `TMW-WARD-${header.state.slice(0, 2).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
-    state: header.state,
-    lga: header.lga,
-    ward: header.ward,
-    fullName: row.names,
-    phone: row.phone,
-    vin: row.vin,
-    pollingUnit: row.pollingUnit,
-    bankName: row.bank,
-    accountNumber: row.accountNo,
-    signature: row.sign || "Signed",
-    timestamp,
-    status: scriptUrl ? 'synced' : 'local_saved'
-  }));
+  // Map into RegistrationRecords including role and EXCO status
+  const mappedRecords: RegistrationRecord[] = validRows.map((row, idx) => {
+    const isExco = row.isExco ?? (row.role?.toUpperCase().includes("EXCO") || false);
+    const role = row.role?.trim() || (isExco ? "Ward Coordinator / EXCO" : "General Member (Non-EXCO)");
+    return {
+      id: `batch-${Date.now()}-${idx}`,
+      referenceId: `TMW-WARD-${header.state.slice(0, 2).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      state: header.state,
+      lga: header.lga,
+      ward: header.ward,
+      fullName: row.names,
+      phone: row.phone,
+      vin: row.vin,
+      pollingUnit: row.pollingUnit,
+      bankName: row.bank,
+      accountNumber: row.accountNo,
+      signature: row.sign || "Signed",
+      timestamp,
+      status: scriptUrl ? 'synced' : 'local_saved',
+      isExco,
+      excoLevel: isExco ? "Ward" : "None",
+      role
+    };
+  });
 
   const existing = getStoredRegistrations();
   saveStoredRegistrations([...mappedRecords, ...existing]);
@@ -359,7 +379,6 @@ export async function testConnection(url: string): Promise<{ ok: boolean; messag
   }
 
   try {
-    // Attempt ping with no-cors or standard GET
     await fetch(url, { method: "GET", mode: "no-cors" });
     return {
       ok: true,
@@ -374,7 +393,7 @@ export async function testConnection(url: string): Promise<{ ok: boolean; messag
 }
 
 /**
- * Exports all local registrations to downloadable CSV
+ * Exports all local registrations to downloadable CSV with EXCO and Role columns
  */
 export function exportToCSV(records: RegistrationRecord[], filename = "TMW_Electoral_Ward_Registrations.csv"): void {
   if (records.length === 0) return;
@@ -385,6 +404,9 @@ export function exportToCSV(records: RegistrationRecord[], filename = "TMW_Elect
     "LGA",
     "Electoral Ward",
     "Full Name",
+    "Membership Classification",
+    "Executive Level",
+    "Official Role / Designation",
     "Phone Number",
     "Voter Card VIN",
     "Polling Unit",
@@ -397,12 +419,19 @@ export function exportToCSV(records: RegistrationRecord[], filename = "TMW_Elect
   const csvRows = [headers.join(",")];
 
   for (const r of records) {
+    const isExcoVal = r.isExco ? "EXCO" : "Non-EXCO";
+    const levelVal = r.excoLevel || (r.isExco ? "Ward" : "None");
+    const roleVal = r.role || (r.isExco ? "Ward EXCO" : "General Member (Non-EXCO)");
+
     const row = [
       `"${r.referenceId}"`,
       `"${r.state.replace(/"/g, '""')}"`,
       `"${r.lga.replace(/"/g, '""')}"`,
       `"${r.ward.replace(/"/g, '""')}"`,
       `"${r.fullName.replace(/"/g, '""')}"`,
+      `"${isExcoVal}"`,
+      `"${levelVal}"`,
+      `"${roleVal.replace(/"/g, '""')}"`,
       `"${r.phone}"`,
       `"${r.vin}"`,
       `"${r.pollingUnit.replace(/"/g, '""')}"`,

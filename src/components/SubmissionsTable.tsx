@@ -1,6 +1,7 @@
 /**
  * Ward Submissions & Local Registry Table
  * Allows searching, filtering, syncing offline queue, and exporting CSV
+ * Includes EXCO vs Non-EXCO classification & role indicators
  */
 
 import React, { useState } from "react";
@@ -17,7 +18,9 @@ import {
   Filter,
   FileSpreadsheet,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Star,
+  Users
 } from "lucide-react";
 
 interface SubmissionsTableProps {
@@ -41,24 +44,35 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "synced" | "pending" | "local_saved">("all");
+  const [excoFilter, setExcoFilter] = useState<"all" | "exco" | "non_exco">("all");
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   // Filter records
   const filtered = records.filter(r => {
+    const term = searchTerm.toLowerCase();
     const matchesSearch = 
-      r.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.phone.includes(searchTerm) ||
-      r.vin.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.ward.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.lga.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.referenceId.toLowerCase().includes(searchTerm.toLowerCase());
+      r.fullName.toLowerCase().includes(term) ||
+      (r.role && r.role.toLowerCase().includes(term)) ||
+      (r.excoLevel && r.excoLevel.toLowerCase().includes(term)) ||
+      r.phone.includes(term) ||
+      r.vin.toLowerCase().includes(term) ||
+      r.ward.toLowerCase().includes(term) ||
+      r.lga.toLowerCase().includes(term) ||
+      r.referenceId.toLowerCase().includes(term);
 
     const matchesStatus = statusFilter === "all" || r.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesExco = 
+      excoFilter === "all" || 
+      (excoFilter === "exco" && (r.isExco || r.role?.toUpperCase().includes("EXCO"))) ||
+      (excoFilter === "non_exco" && (!r.isExco && !r.role?.toUpperCase().includes("EXCO")));
+
+    return matchesSearch && matchesStatus && matchesExco;
   });
 
   const pendingCount = records.filter(r => r.status === "pending" || r.status === "local_saved").length;
+  const excoCount = records.filter(r => r.isExco || r.role?.toUpperCase().includes("EXCO")).length;
+  const nonExcoCount = records.length - excoCount;
 
   const handleSyncPending = async () => {
     if (!isBackendConnected) {
@@ -103,9 +117,19 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
             <h2 className="text-xl font-extrabold text-[#0D5C3A]">
               TMW Electoral Ward Registrations Directory
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Live device registry of verified citizens enrolled in the Ward mobilization database.
-            </p>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1">
+              <span>Total Members: <strong className="text-slate-900 font-bold">{records.length}</strong></span>
+              <span>·</span>
+              <span className="flex items-center gap-1 text-amber-800 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                <span>EXCO Members: <strong>{excoCount}</strong></span>
+              </span>
+              <span>·</span>
+              <span className="flex items-center gap-1 text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <Users className="w-3 h-3 text-emerald-600" />
+                <span>Non-EXCO Members: <strong>{nonExcoCount}</strong></span>
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -115,7 +139,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
               className="px-3.5 py-2 text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 transition-colors disabled:opacity-40"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Export CSV</span>
+              <span>Export CSV (with Roles)</span>
             </button>
 
             <button
@@ -168,24 +192,41 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by name, phone, VIN, ward, or reference ID..."
+            placeholder="Search by name, role, EXCO level, VIN, phone, ward..."
             className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-emerald-600 outline-hidden font-medium"
           />
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Filter className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-xs text-slate-500 font-medium">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:ring-2 focus:ring-emerald-600"
-          >
-            <option value="all">All Registrations ({records.length})</option>
-            <option value="synced">Synced to Sheets ({records.filter(r => r.status === 'synced').length})</option>
-            <option value="local_saved">Local / Queued ({pendingCount})</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* EXCO Role Filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500 font-medium">Role:</span>
+            <select
+              value={excoFilter}
+              onChange={(e) => setExcoFilter(e.target.value as any)}
+              className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:ring-2 focus:ring-emerald-600"
+            >
+              <option value="all">All Roles ({records.length})</option>
+              <option value="exco">EXCO Officers Only ({excoCount})</option>
+              <option value="non_exco">Non-EXCO Members ({nonExcoCount})</option>
+            </select>
+          </div>
+
+          {/* Sync Status Filter */}
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-xs text-slate-500 font-medium">Sync:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:ring-2 focus:ring-emerald-600"
+            >
+              <option value="all">All Status</option>
+              <option value="synced">Synced to Sheets ({records.filter(r => r.status === 'synced').length})</option>
+              <option value="local_saved">Queued ({pendingCount})</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -199,7 +240,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
             <h3 className="text-sm font-bold text-slate-800">No Registrations Found</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
               {searchTerm
-                ? "No registered members matched your search criteria."
+                ? "No registered members matched your search or role filters."
                 : "No members have been registered on this device yet. Use the Single Member Form or Ward Sheet to begin enrollment."}
             </p>
           </div>
@@ -210,6 +251,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
                 <tr className="bg-slate-50 text-slate-700 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200">
                   <th className="py-3 px-4">Ref ID</th>
                   <th className="py-3 px-4">Full Name</th>
+                  <th className="py-3 px-4">Role / Classification</th>
                   <th className="py-3 px-4">Phone</th>
                   <th className="py-3 px-4">Ward / LGA</th>
                   <th className="py-3 px-4">Voter VIN</th>
@@ -219,76 +261,102 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                    {/* Ref ID */}
-                    <td className="py-2.5 px-4 font-mono font-semibold text-emerald-800 whitespace-nowrap">
-                      {item.referenceId}
-                    </td>
+                {filtered.map((item) => {
+                  const isExco = Boolean(item.isExco || item.role?.toUpperCase().includes("EXCO"));
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                      {/* Ref ID */}
+                      <td className="py-2.5 px-4 font-mono font-semibold text-emerald-800 whitespace-nowrap">
+                        {item.referenceId}
+                      </td>
 
-                    {/* Full Name */}
-                    <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                      {item.fullName}
-                    </td>
+                      {/* Full Name */}
+                      <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
+                        {item.fullName}
+                      </td>
 
-                    {/* Phone */}
-                    <td className="py-2.5 px-4 font-mono text-slate-700 whitespace-nowrap">
-                      {item.phone}
-                    </td>
+                      {/* Role & EXCO Distinction */}
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        {isExco ? (
+                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200">
+                            <Star className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />
+                            <div>
+                              <span className="font-bold block text-[11px]">{item.role || "EXCO Member"}</span>
+                              <span className="text-[9px] text-amber-700 block uppercase font-semibold">
+                                {item.excoLevel || "Ward"} Level EXCO
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200">
+                            <Users className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <div>
+                              <span className="font-semibold block text-[11px]">{item.role || "General Member"}</span>
+                              <span className="text-[9px] text-emerald-700 block uppercase">Non-EXCO</span>
+                            </div>
+                          </div>
+                        )}
+                      </td>
 
-                    {/* Ward / LGA */}
-                    <td className="py-2.5 px-4 text-slate-700">
-                      <div className="font-semibold text-slate-900">{item.ward}</div>
-                      <div className="text-[10px] text-slate-500">{item.lga}, {item.state}</div>
-                    </td>
+                      {/* Phone */}
+                      <td className="py-2.5 px-4 font-mono text-slate-700 whitespace-nowrap">
+                        {item.phone}
+                      </td>
 
-                    {/* Voter VIN */}
-                    <td className="py-2.5 px-4 font-mono uppercase text-slate-800 whitespace-nowrap">
-                      {item.vin}
-                    </td>
+                      {/* Ward / LGA */}
+                      <td className="py-2.5 px-4 text-slate-700">
+                        <div className="font-semibold text-slate-900">{item.ward}</div>
+                        <div className="text-[10px] text-slate-500">{item.lga}, {item.state}</div>
+                      </td>
 
-                    {/* Bank & Account */}
-                    <td className="py-2.5 px-4 text-slate-700 whitespace-nowrap">
-                      <div className="font-semibold text-slate-900">{item.bankName}</div>
-                      <div className="font-mono text-[10px] text-slate-500">{item.accountNumber}</div>
-                    </td>
+                      {/* Voter VIN */}
+                      <td className="py-2.5 px-4 font-mono uppercase text-slate-800 whitespace-nowrap">
+                        {item.vin}
+                      </td>
 
-                    {/* Status */}
-                    <td className="py-2.5 px-4 text-center whitespace-nowrap">
-                      {item.status === "synced" ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          Synced
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <Clock className="w-3 h-3 text-amber-600" />
-                          Queued
-                        </span>
-                      )}
-                    </td>
+                      {/* Bank & Account */}
+                      <td className="py-2.5 px-4 text-slate-700 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900">{item.bankName}</div>
+                        <div className="font-mono text-[10px] text-slate-500">{item.accountNumber}</div>
+                      </td>
 
-                    {/* Actions */}
-                    <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => onViewRecord(item)}
-                          className="p-1 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded"
-                          title="View Digital Registration Slip"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onDeleteRecord(item.id)}
-                          className="p-1 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded"
-                          title="Remove record"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      {/* Status */}
+                      <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                        {item.status === "synced" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Synced
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            Queued
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => onViewRecord(item)}
+                            className="p-1 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded"
+                            title="View Digital Registration Slip"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => onDeleteRecord(item.id)}
+                            className="p-1 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded"
+                            title="Remove record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

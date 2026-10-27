@@ -454,3 +454,73 @@ export function generateReferenceId(stateCode: string = "NG"): string {
   const random = Math.floor(1000 + Math.random() * 9000);
   return `TMW-${stateCode.toUpperCase()}-${random}${timestamp}`;
 }
+
+export const EXCO_LEVELS = [
+  { value: "Ward", label: "Ward Level (Electoral Ward EXCO)" },
+  { value: "LGA", label: "LGA Level (Local Government Area EXCO)" },
+  { value: "State", label: "State Level (State EXCO)" },
+  { value: "National", label: "National Level (National EXCO)" },
+] as const;
+
+export const STANDARD_EXCO_ROLES_BY_LEVEL: Record<string, string[]> = {
+  Ward: [
+    "Ward Coordinator / Chairman (EXCO)",
+    "Ward Deputy Coordinator / Vice Chairman (EXCO)",
+    "Ward Secretary (EXCO)",
+    "Ward Assistant Secretary (EXCO)",
+    "Ward Youth Leader (EXCO)",
+    "Ward Women Leader (EXCO)",
+    "Ward Organizing Secretary (EXCO)",
+    "Ward Publicity Secretary / PRO (EXCO)",
+    "Ward Treasurer (EXCO)",
+    "Ward Financial Secretary (EXCO)",
+    "Ward Welfare Officer (EXCO)",
+    "Ward Legal Adviser (EXCO)",
+    "Polling Unit Coordinator (EXCO)",
+    "Ex-Officio Member (Ward EXCO)",
+    "Other Ward Executive Officer"
+  ],
+  LGA: [
+    "LGA Coordinator / Chairman (EXCO)",
+    "LGA Deputy Coordinator (EXCO)",
+    "LGA Secretary (EXCO)",
+    "LGA Youth Leader (EXCO)",
+    "LGA Women Leader (EXCO)",
+    "LGA Organizing Secretary (EXCO)",
+    "LGA Publicity Secretary / PRO (EXCO)",
+    "LGA Treasurer / Financial Secretary (EXCO)",
+    "Other LGA Executive Officer"
+  ],
+  State: [
+    "State Coordinator / Chairman (EXCO)",
+    "State Deputy Coordinator (EXCO)",
+    "State Secretary (EXCO)",
+    "State Youth Leader (EXCO)",
+    "State Women Leader (EXCO)",
+    "State Organizing Secretary (EXCO)",
+    "State Director of Mobilization (EXCO)",
+    "Other State Executive Officer"
+  ],
+  National: [
+    "Director General / National Coordinator (EXCO)",
+    "Deputy Director General (EXCO)",
+    "National Secretary (EXCO)",
+    "National Youth Leader (EXCO)",
+    "National Women Leader (EXCO)",
+    "National Organizing Secretary (EXCO)",
+    "National Directorate Member (EXCO)",
+    "Other National Executive Officer"
+  ]
+};
+
+export const STANDARD_NON_EXCO_ROLES = [
+  "General Member (Non-EXCO)",
+  "Polling Unit Agent / Mobilizer (Non-EXCO)",
+  "Grassroots Canvasser (Non-EXCO)",
+  "Volunteer / Campaign Supporter (Non-EXCO)",
+  "Elder / Patron / Advisory Member (Non-EXCO)",
+  "Student / Youth Wing Mobilizer (Non-EXCO)",
+  "Market / Artisan Wing Member (Non-EXCO)",
+  "Other Non-EXCO Member"
+];
+

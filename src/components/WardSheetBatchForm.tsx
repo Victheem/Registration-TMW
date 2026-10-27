@@ -1,6 +1,7 @@
 /**
  * Official 20-Row Electoral Ward Registration Sheet Component
  * Faithfully mirrors the PDF official registration sheet for batch submission & coordinator transcription
+ * Includes Role & EXCO distinction for all members
  */
 
 import React, { useState } from "react";
@@ -16,7 +17,7 @@ import {
   CheckCircle2, 
   Sparkles,
   ShieldAlert,
-  FileSpreadsheet
+  Star
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -44,11 +45,13 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
     submissionDate: new Date().toISOString().split("T")[0]
   });
 
-  // 20 Rows
+  // 20 Rows with Role and EXCO tracking
   const [rows, setRows] = useState<WardSheetRow[]>(() => {
     return Array.from({ length: INITIAL_ROWS_COUNT }, (_, i) => ({
       sn: i + 1,
       names: "",
+      role: i === 0 ? "Ward Coordinator (EXCO)" : i === 1 ? "Ward Secretary (EXCO)" : "General Member (Non-EXCO)",
+      isExco: i < 2,
       phone: "",
       vin: "",
       pollingUnit: "",
@@ -64,10 +67,13 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
   const selectedStateObj = NIGERIAN_STATES_AND_LGAS.find(s => s.state === header.state);
   const availableLgas = selectedStateObj ? selectedStateObj.lgas : [];
 
-  const handleRowChange = (index: number, field: keyof WardSheetRow, value: string) => {
+  const handleRowChange = (index: number, field: keyof WardSheetRow, value: any) => {
     setRows(prev => {
       const copy = [...prev];
       copy[index] = { ...copy[index], [field]: value };
+      if (field === "role") {
+        copy[index].isExco = typeof value === "string" && value.toUpperCase().includes("EXCO");
+      }
       return copy;
     });
   };
@@ -78,6 +84,8 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
       const newItems: WardSheetRow[] = Array.from({ length: count }, (_, i) => ({
         sn: startSn + i,
         names: "",
+        role: "General Member (Non-EXCO)",
+        isExco: false,
         phone: "",
         vin: "",
         pollingUnit: "",
@@ -95,6 +103,8 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
         Array.from({ length: INITIAL_ROWS_COUNT }, (_, i) => ({
           sn: i + 1,
           names: "",
+          role: "General Member (Non-EXCO)",
+          isExco: false,
           phone: "",
           vin: "",
           pollingUnit: "",
@@ -110,12 +120,12 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
   // Populate sample demo rows for quick coordinator testing
   const handleFillSample = () => {
     const samples = [
-      { names: "Adewale Babatunde", phone: "08031234567", vin: "90F5B40278192831001", pollingUnit: "PU 001 Grammar School", bank: "Access Bank", accountNo: "0123456789", sign: "Signed" },
-      { names: "Fatima Aliyu Bello", phone: "08029876543", vin: "90F5B40278192831002", pollingUnit: "PU 002 Ward Secretariat", bank: "GTBank", accountNo: "0234567890", sign: "Signed" },
-      { names: "Chinedu Chukwudi", phone: "08051112233", vin: "90F5B40278192831003", pollingUnit: "PU 003 Central Mosque", bank: "Zenith Bank", accountNo: "1012345678", sign: "Signed" },
-      { names: "Grace Toyin Olufemi", phone: "08104445566", vin: "90F5B40278192831004", pollingUnit: "PU 004 Anglican Hall", bank: "First Bank", accountNo: "2012345679", sign: "Signed" },
-      { names: "Ibrahim Musa Danjuma", phone: "08097778899", vin: "90F5B40278192831005", pollingUnit: "PU 005 Town Hall Square", bank: "UBA", accountNo: "2098765432", sign: "Signed" },
-      { names: "Blessing Amarachi Okafor", phone: "07063332211", vin: "90F5B40278192831006", pollingUnit: "PU 006 Primary Health Centre", bank: "OPay", accountNo: "8063332211", sign: "Signed" },
+      { names: "Adewale Babatunde", role: "Ward Coordinator (EXCO)", isExco: true, phone: "08031234567", vin: "90F5B40278192831001", pollingUnit: "PU 001 Grammar School", bank: "Access Bank", accountNo: "0123456789", sign: "Signed" },
+      { names: "Fatima Aliyu Bello", role: "Ward Secretary (EXCO)", isExco: true, phone: "08029876543", vin: "90F5B40278192831002", pollingUnit: "PU 002 Ward Secretariat", bank: "GTBank", accountNo: "0234567890", sign: "Signed" },
+      { names: "Chinedu Chukwudi", role: "Ward Youth Leader (EXCO)", isExco: true, phone: "08051112233", vin: "90F5B40278192831003", pollingUnit: "PU 003 Central Mosque", bank: "Zenith Bank", accountNo: "1012345678", sign: "Signed" },
+      { names: "Grace Toyin Olufemi", role: "Ward Women Leader (EXCO)", isExco: true, phone: "08104445566", vin: "90F5B40278192831004", pollingUnit: "PU 004 Anglican Hall", bank: "First Bank", accountNo: "2012345679", sign: "Signed" },
+      { names: "Ibrahim Musa Danjuma", role: "General Member (Non-EXCO)", isExco: false, phone: "08097778899", vin: "90F5B40278192831005", pollingUnit: "PU 005 Town Hall Square", bank: "UBA", accountNo: "2098765432", sign: "Signed" },
+      { names: "Blessing Amarachi Okafor", role: "Grassroots Mobilizer (Non-EXCO)", isExco: false, phone: "07063332211", vin: "90F5B40278192831006", pollingUnit: "PU 006 Primary Health Centre", bank: "OPay", accountNo: "8063332211", sign: "Signed" },
     ];
 
     setRows(prev => {
@@ -131,7 +141,7 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
 
     setMessage({
       type: "success",
-      text: "Loaded sample ward members into rows 1–6. You can edit them or submit directly!"
+      text: "Loaded sample ward members with EXCO and Non-EXCO designations into rows 1–6."
     });
   };
 
@@ -183,13 +193,13 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
               <span className="px-2 py-0.5 text-[11px] font-bold bg-emerald-100 text-emerald-900 rounded">
                 Official Multi-Row Sheet
               </span>
-              <span className="text-xs text-slate-500">Matches Paper Form 1-to-1</span>
+              <span className="text-xs text-slate-500">EXCO &amp; Member Hierarchy Enabled</span>
             </div>
             <h2 className="text-xl font-extrabold text-[#0D5C3A] mt-1">
               ELECTORAL WARD REGISTRATION SHEET (20 ROWS)
             </h2>
             <p className="text-xs text-slate-600 mt-0.5">
-              Ideal for Ward Coordinators, field supervisors, and bulk data entry agents.
+              Distinguish Executive Committee (EXCO) officers from General Grassroots members across all wards.
             </p>
           </div>
 
@@ -294,29 +304,31 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
           </div>
         </div>
 
-        {/* 20-Row Grid Table */}
+        {/* 20-Row Grid Table with ROLE / EXCO column */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-[#0D5C3A] text-white font-extrabold uppercase text-[11px] tracking-wider border-b border-emerald-950">
                 <th className="py-2.5 px-3 text-center border-r border-emerald-700/60 w-12">S/N</th>
-                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[180px]">NAMES</th>
-                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[130px]">PHONE</th>
-                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[160px]">VOTER'S CARD NO.</th>
-                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[170px]">POLLING UNIT</th>
-                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[140px]">BANK</th>
-                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[130px]">ACCOUNT NO.</th>
-                <th className="py-2.5 px-3 min-w-[90px] text-center">SIGN</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[170px]">NAMES</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[170px]">ROLE / EXCO STATUS</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[125px]">PHONE</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[155px]">VOTER'S CARD NO.</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[150px]">POLLING UNIT</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[130px]">BANK</th>
+                <th className="py-2.5 px-3 border-r border-emerald-700/60 min-w-[120px]">ACCOUNT NO.</th>
+                <th className="py-2.5 px-3 min-w-[80px] text-center">SIGN</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rows.map((row, index) => {
                 const isRowActive = Boolean(row.names || row.phone || row.vin);
+                const isRowExco = Boolean(row.isExco || row.role?.toUpperCase().includes("EXCO"));
                 return (
                   <tr
                     key={row.sn}
                     className={`transition-colors ${
-                      isRowActive ? "bg-emerald-50/40" : index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                      isRowActive ? (isRowExco ? "bg-amber-50/50" : "bg-emerald-50/40") : index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                     } hover:bg-emerald-50/70`}
                   >
                     {/* S/N */}
@@ -333,6 +345,27 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
                         placeholder="Full Name"
                         className="w-full px-2 py-1.5 text-xs rounded border border-transparent hover:border-slate-300 focus:border-emerald-600 focus:bg-white focus:ring-1 focus:ring-emerald-600 outline-hidden font-medium text-slate-900"
                       />
+                    </td>
+
+                    {/* ROLE / EXCO STATUS */}
+                    <td className="py-1 px-1.5 border-r border-slate-200">
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          list="ward-role-suggestions"
+                          value={row.role || ""}
+                          onChange={(e) => handleRowChange(index, "role", e.target.value)}
+                          placeholder="Select / Type Role"
+                          className={`w-full pl-2 pr-6 py-1.5 text-xs rounded border border-transparent hover:border-slate-300 focus:border-emerald-600 focus:bg-white focus:ring-1 focus:ring-emerald-600 outline-hidden font-medium ${
+                            isRowExco ? "text-amber-900 font-semibold" : "text-slate-800"
+                          }`}
+                        />
+                        {isRowExco && (
+                          <span title="EXCO Member" className="absolute right-2 pointer-events-none flex items-center">
+                            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* PHONE */}
@@ -363,7 +396,7 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
                         type="text"
                         value={row.pollingUnit}
                         onChange={(e) => handleRowChange(index, "pollingUnit", e.target.value)}
-                        placeholder="Polling Unit name/code"
+                        placeholder="PU Name / Code"
                         className="w-full px-2 py-1.5 text-xs rounded border border-transparent hover:border-slate-300 focus:border-emerald-600 focus:bg-white focus:ring-1 focus:ring-emerald-600 outline-hidden text-slate-900"
                       />
                     </td>
@@ -409,7 +442,24 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
           </table>
         </div>
 
-        {/* Bank Suggestions datalist */}
+        {/* Role & Bank Datalists */}
+        <datalist id="ward-role-suggestions">
+          <option value="Ward Coordinator (EXCO)" />
+          <option value="Ward Deputy Coordinator (EXCO)" />
+          <option value="Ward Secretary (EXCO)" />
+          <option value="Ward Youth Leader (EXCO)" />
+          <option value="Ward Women Leader (EXCO)" />
+          <option value="Ward Organizing Secretary (EXCO)" />
+          <option value="Ward Publicity Secretary (EXCO)" />
+          <option value="Ward Treasurer (EXCO)" />
+          <option value="Polling Unit Coordinator (EXCO)" />
+          <option value="General Member (Non-EXCO)" />
+          <option value="Grassroots Mobilizer (Non-EXCO)" />
+          <option value="Polling Unit Agent (Non-EXCO)" />
+          <option value="Volunteer / Campaign Supporter (Non-EXCO)" />
+          <option value="Elder / Patron (Non-EXCO)" />
+        </datalist>
+
         <datalist id="bank-suggestions">
           {NIGERIAN_BANKS.map(b => (
             <option key={b} value={b} />
