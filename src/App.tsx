@@ -100,8 +100,15 @@ export default function App() {
     setActiveTab("print_preview");
   };
 
+  const pageCopy = {
+    individual: { eyebrow: "MEMBER INTAKE", title: "Electoral ward registration", detail: "National grassroots member directory" },
+    ward_sheet: { eyebrow: "COORDINATOR WORKSPACE", title: "Ward sheet intake", detail: "Register members in batches of 20" },
+    registry: { eyebrow: "RECORDS & FOLLOW-UP", title: "Local registration registry", detail: "Review, export, and sync saved records" },
+    print_preview: { eyebrow: "DOCUMENT OUTPUT", title: "Official ward sheet", detail: "Review the print layout before exporting" },
+  }[activeTab];
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+    <div className="app-shell min-h-screen flex flex-col font-sans text-slate-900">
       {/* Top Brand Header */}
       <Header
         activeTab={activeTab}
@@ -112,7 +119,18 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-7 sm:py-9">
+        <div className="mb-6 flex flex-col gap-3 border-b border-emerald-950/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-red-700">{pageCopy.eyebrow}</p>
+            <h2 className="mt-1 text-2xl font-extrabold leading-tight text-emerald-950 sm:text-3xl">{pageCopy.title}</h2>
+            <p className="mt-1 text-sm text-slate-600">{pageCopy.detail}</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <span className="h-2 w-2 rounded-full bg-emerald-600" />
+            <span>National coordination portal</span>
+          </div>
+        </div>
         
         {/* Dynamic View rendering */}
         {activeTab === "individual" && (
@@ -174,7 +192,7 @@ export default function App() {
       />
 
       {/* Official Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-12 py-8 text-xs text-slate-600 print:hidden">
+      <footer className="mt-12 border-t border-emerald-950/10 bg-white/90 py-7 text-xs text-slate-600 print:hidden">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <TMWLogo size={42} />
