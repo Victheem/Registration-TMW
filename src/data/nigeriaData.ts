@@ -464,7 +464,7 @@ export const EXCO_LEVELS = [
 
 export const STANDARD_EXCO_ROLES_BY_LEVEL: Record<string, string[]> = {
   Ward: [
-    "Ward Coordinator / Chairman (EXCO)",
+    "Ward Coordinators (EXCO)",
     "Ward Deputy Coordinator / Vice Chairman (EXCO)",
     "Ward Secretary (EXCO)",
     "Ward Assistant Secretary (EXCO)",
@@ -481,7 +481,7 @@ export const STANDARD_EXCO_ROLES_BY_LEVEL: Record<string, string[]> = {
     "Other Ward Executive Officer"
   ],
   LGA: [
-    "LGA Coordinator / Chairman (EXCO)",
+    "LGA Coordinators (EXCO)",
     "LGA Deputy Coordinator (EXCO)",
     "LGA Secretary (EXCO)",
     "LGA Youth Leader (EXCO)",
@@ -492,13 +492,16 @@ export const STANDARD_EXCO_ROLES_BY_LEVEL: Record<string, string[]> = {
     "Other LGA Executive Officer"
   ],
   State: [
-    "State Coordinator / Chairman (EXCO)",
-    "State Deputy Coordinator (EXCO)",
+    "State Coordinator (EXCO)",
+    "Deputy/Operations Lead (EXCO)",
     "State Secretary (EXCO)",
+    "State Finance/Admin Lead (EXCO)",
+    "State Communications Lead (EXCO)",
+    "State Mobilisation Lead (EXCO)",
+    "State Policy/Engagement Lead (EXCO)",
     "State Youth Leader (EXCO)",
     "State Women Leader (EXCO)",
     "State Organizing Secretary (EXCO)",
-    "State Director of Mobilization (EXCO)",
     "Other State Executive Officer"
   ],
   National: [
