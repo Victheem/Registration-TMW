@@ -17,7 +17,9 @@ import { RegistrationRecord, WardSheetHeader, WardSheetRow } from "./types";
 import { 
   getSavedScriptUrl, 
   getStoredRegistrations, 
-  saveStoredRegistrations 
+  saveStoredRegistrations,
+  syncServerConfig,
+  fetchServerRegistrations
 } from "./services/googleSheetsService";
 import { TMWLogo } from "./components/TMWLogo";
 import { 
@@ -66,12 +68,26 @@ export default function App() {
     }))
   });
 
-  // Load records and saved Google Apps Script URL on initial load
+  // Load records and saved Google Apps Script URL on initial load and sync across devices
   useEffect(() => {
+    // 1. Load local cache immediately
     const loadedUrl = getSavedScriptUrl();
-    setScriptUrl(loadedUrl);
-    const loadedRecords = getStoredRegistrations();
-    setRecords(loadedRecords);
+    if (loadedUrl) setScriptUrl(loadedUrl);
+    setRecords(getStoredRegistrations());
+
+    // 2. Fetch server-wide Google Apps Script config so all phones and computers share the URL
+    syncServerConfig().then((syncedUrl) => {
+      if (syncedUrl) {
+        setScriptUrl(syncedUrl);
+      }
+    });
+
+    // 3. Fetch server-wide registrations so submissions from mobile phones appear in the registry
+    fetchServerRegistrations().then((serverRecs) => {
+      if (serverRecs && serverRecs.length > 0) {
+        setRecords(serverRecs);
+      }
+    });
   }, []);
 
   // Redirect to individual tab if registry tab is requested while in public view
@@ -81,8 +97,9 @@ export default function App() {
     }
   }, [activeTab, isAdminMode]);
 
-  const refreshRecords = () => {
-    setRecords(getStoredRegistrations());
+  const refreshRecords = async () => {
+    const updated = await fetchServerRegistrations();
+    setRecords(updated);
   };
 
   const handleSingleSuccess = (record: RegistrationRecord) => {
@@ -94,16 +111,26 @@ export default function App() {
     refreshRecords();
   };
 
-  const handleDeleteRecord = (id: string) => {
-    if (confirm("Delete this registration record from local memory?")) {
+  const handleDeleteRecord = async (id: string) => {
+    if (confirm("Delete this registration record?")) {
+      try {
+        await fetch(`/api/registrations/${id}`, { method: "DELETE" });
+      } catch (err) {
+        console.warn("Could not delete from server:", err);
+      }
       const updated = records.filter(r => r.id !== id);
       saveStoredRegistrations(updated);
       setRecords(updated);
     }
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (confirm("Are you sure you want to clear all registrations stored on this device? Ensure you have exported CSV or synced to Google Sheets first.")) {
+      try {
+        await fetch("/api/registrations", { method: "DELETE" });
+      } catch (err) {
+        console.warn("Could not clear on server:", err);
+      }
       saveStoredRegistrations([]);
       setRecords([]);
     }

@@ -13,7 +13,8 @@ import {
   isValidVIN,
   EXCO_LEVELS,
   STANDARD_EXCO_ROLES_BY_LEVEL,
-  STANDARD_NON_EXCO_ROLES
+  STANDARD_NON_EXCO_ROLES,
+  CORE_TMW_LEADERSHIP_ROLES
 } from "../data/nigeriaData";
 import { RegistrationRecord, ExcoLevel } from "../types";
 import { submitRegistration } from "../services/googleSheetsService";
@@ -101,6 +102,19 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
     const levelKey = lvl === "None" ? "Ward" : lvl;
     const defaultForLevel = STANDARD_EXCO_ROLES_BY_LEVEL[levelKey]?.[0] || "Executive Member";
     setSelectedExcoRole(defaultForLevel);
+    setCustomRole("");
+  };
+
+  const handleQuickSelectRole = (roleTitle: string) => {
+    setIsExco(true);
+    let targetLevel: ExcoLevel = "State";
+    if (roleTitle.includes("LGA")) {
+      targetLevel = "LGA";
+    } else if (roleTitle.includes("Ward")) {
+      targetLevel = "Ward";
+    }
+    setExcoLevel(targetLevel);
+    setSelectedExcoRole(roleTitle);
     setCustomRole("");
   };
 
@@ -448,12 +462,49 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
             {/* Role Fields based on EXCO choice */}
             {isExco ? (
               <div className="p-4 bg-amber-50/60 border border-amber-200/80 rounded-lg space-y-4">
-                <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
-                  <Star className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
-                  <span>Executive Committee Details</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
+                    <Star className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
+                    <span>Executive Committee (EXCO) Designation</span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                    Official TMW Hierarchy
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 9 Official Core Positions Grid */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+                    Official Leadership Positions (1-Click Selection):
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {CORE_TMW_LEADERSHIP_ROLES.map((roleTitle, idx) => {
+                      const isSelected = selectedExcoRole === roleTitle;
+                      return (
+                        <button
+                          key={roleTitle}
+                          type="button"
+                          onClick={() => handleQuickSelectRole(roleTitle)}
+                          className={`px-3 py-2 text-left rounded-lg border text-xs font-semibold transition-all flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? "bg-amber-600 text-white border-amber-600 shadow-sm ring-1 ring-amber-600"
+                              : "bg-white text-slate-700 border-slate-200 hover:border-amber-300 hover:bg-amber-50/50"
+                          }`}
+                        >
+                          <span className="truncate">
+                            <strong className={isSelected ? "text-amber-100" : "text-amber-700"}>
+                              {idx + 1}.
+                            </strong>{" "}
+                            {roleTitle}
+                          </span>
+                          {isSelected && <Star className="w-3.5 h-3.5 fill-white text-white shrink-0 ml-1" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-amber-200/60">
                   {/* EXCO Level */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
@@ -478,7 +529,7 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
                   {/* Specific EXCO Role */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                      Executive Portfolio / Role <span className="text-red-500">*</span>
+                      All Executive Portfolios for {excoLevel} Level:
                     </label>
                     <select
                       value={selectedExcoRole}

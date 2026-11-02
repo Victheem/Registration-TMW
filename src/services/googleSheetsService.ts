@@ -196,22 +196,79 @@ function createJsonResponse(data) {
 }
 `;
 
+let inMemoryScriptUrl: string = "";
+
 /**
- * Retrieves the currently saved Web App URL from localStorage or env
+ * Retrieves the currently saved Web App URL from memory, localStorage, or env
  */
 export function getSavedScriptUrl(): string {
-  if (typeof window === "undefined") return "";
-  const stored = localStorage.getItem(DEFAULT_SCRIPT_STORAGE_KEY);
-  if (stored && stored.trim()) return stored.trim();
+  if (inMemoryScriptUrl && inMemoryScriptUrl.trim()) {
+    return inMemoryScriptUrl.trim();
+  }
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem(DEFAULT_SCRIPT_STORAGE_KEY);
+    if (stored && stored.trim()) {
+      inMemoryScriptUrl = stored.trim();
+      return stored.trim();
+    }
+  }
   return (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL || "";
 }
 
 /**
- * Saves the Web App URL to localStorage
+ * Syncs configuration with the central server so all devices (mobile & desktop) share the URL
  */
-export function saveScriptUrl(url: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(DEFAULT_SCRIPT_STORAGE_KEY, url.trim());
+export async function syncServerConfig(): Promise<string> {
+  try {
+    const res = await fetch("/api/config");
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.scriptUrl) {
+        inMemoryScriptUrl = data.scriptUrl.trim();
+        if (typeof window !== "undefined") {
+          localStorage.setItem(DEFAULT_SCRIPT_STORAGE_KEY, data.scriptUrl.trim());
+        }
+        return data.scriptUrl.trim();
+      }
+    }
+  } catch (err) {
+    // Silently continue if server not reachable
+  }
+
+  // If server has no URL, check if this device has one in localStorage and push to server
+  const localUrl = getSavedScriptUrl();
+  if (localUrl) {
+    try {
+      await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scriptUrl: localUrl }),
+      });
+    } catch {
+      // Ignore
+    }
+  }
+  return localUrl;
+}
+
+/**
+ * Saves the Web App URL both locally and to the server configuration
+ */
+export async function saveScriptUrl(url: string): Promise<void> {
+  const cleanUrl = url.trim();
+  inMemoryScriptUrl = cleanUrl;
+  if (typeof window !== "undefined") {
+    localStorage.setItem(DEFAULT_SCRIPT_STORAGE_KEY, cleanUrl);
+  }
+  try {
+    await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scriptUrl: cleanUrl }),
+    });
+  } catch (err) {
+    console.warn("Could not sync script URL to server config:", err);
+  }
 }
 
 /**
@@ -228,6 +285,32 @@ export function getStoredRegistrations(): RegistrationRecord[] {
 }
 
 /**
+ * Fetches registrations from the central server (aggregates all phones & machines)
+ */
+export async function fetchServerRegistrations(): Promise<RegistrationRecord[]> {
+  try {
+    const res = await fetch("/api/registrations");
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.records)) {
+        const local = getStoredRegistrations();
+        const map = new Map<string, RegistrationRecord>();
+        data.records.forEach((r: RegistrationRecord) => map.set(r.id, r));
+        local.forEach((r: RegistrationRecord) => {
+          if (!map.has(r.id)) map.set(r.id, r);
+        });
+        const merged = Array.from(map.values());
+        saveStoredRegistrations(merged);
+        return merged;
+      }
+    }
+  } catch {
+    // Fall back to local
+  }
+  return getStoredRegistrations();
+}
+
+/**
  * Saves an updated list of registrations to browser storage
  */
 export function saveStoredRegistrations(records: RegistrationRecord[]): void {
@@ -236,17 +319,44 @@ export function saveStoredRegistrations(records: RegistrationRecord[]): void {
 }
 
 /**
- * Submits a single registration to the Google Apps Script Web App
+ * Submits a single registration.
+ * Uses central server proxy first (reliable across all mobile phones & external devices),
+ * with direct client-side Google Apps Script fetch as fallback.
  */
 export async function submitRegistration(record: RegistrationRecord): Promise<{
   success: boolean;
   mode: 'sheets' | 'local_queued';
   message: string;
 }> {
-  const scriptUrl = getSavedScriptUrl();
   const existingRecords = getStoredRegistrations();
 
-  // If no script URL configured, save locally with 'local_saved' status
+  // 1. Try submitting through central server route first (solves mobile CORS & shares across all devices)
+  try {
+    const serverRes = await fetch("/api/submit-registration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(record),
+    });
+
+    if (serverRes.ok) {
+      const data = await serverRes.json();
+      const statusVal = data.mode === 'sheets' ? ('synced' as const) : ('local_saved' as const);
+      const updated = [{ ...record, status: statusVal }, ...existingRecords];
+      saveStoredRegistrations(updated);
+
+      return {
+        success: true,
+        mode: data.mode === 'sheets' ? 'sheets' : 'local_queued',
+        message: data.message || "Registration submitted successfully to Google Sheets!",
+      };
+    }
+  } catch (serverErr) {
+    console.warn("Central server route unavailable, attempting client-side fallback:", serverErr);
+  }
+
+  // 2. Client-side fallback if server route is unavailable
+  const scriptUrl = getSavedScriptUrl();
+
   if (!scriptUrl) {
     const updated = [{ ...record, status: 'local_saved' as const }, ...existingRecords];
     saveStoredRegistrations(updated);
@@ -300,13 +410,20 @@ export async function submitBatchWardSheet(
     throw new Error("Please enter at least one member row before submitting.");
   }
 
-  const scriptUrl = getSavedScriptUrl();
   const timestamp = new Date().toISOString();
 
   // Map into RegistrationRecords including role and EXCO status
   const mappedRecords: RegistrationRecord[] = validRows.map((row, idx) => {
-    const isExco = row.isExco ?? (row.role?.toUpperCase().includes("EXCO") || false);
-    const role = row.role?.trim() || (isExco ? "Ward Coordinator / EXCO" : "General Member (Non-EXCO)");
+    const isExco = row.isExco ?? (
+      Boolean(row.role && (
+        row.role.includes("EXCO") ||
+        row.role.includes("Coordinator") ||
+        row.role.includes("Lead") ||
+        row.role.includes("Secretary") ||
+        row.role.includes("Leader")
+      ))
+    );
+    const role = row.role?.trim() || (isExco ? "Ward Coordinators" : "General Member (Non-EXCO)");
     return {
       id: `batch-${Date.now()}-${idx}`,
       referenceId: `TMW-WARD-${header.state.slice(0, 2).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -321,7 +438,7 @@ export async function submitBatchWardSheet(
       accountNumber: row.accountNo,
       signature: row.sign || "Signed",
       timestamp,
-      status: scriptUrl ? 'synced' : 'local_saved',
+      status: 'synced',
       isExco,
       excoLevel: isExco ? "Ward" : "None",
       role
@@ -331,6 +448,30 @@ export async function submitBatchWardSheet(
   const existing = getStoredRegistrations();
   saveStoredRegistrations([...mappedRecords, ...existing]);
 
+  // 1. Try server batch endpoint first
+  try {
+    const serverRes = await fetch("/api/submit-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        header,
+        records: mappedRecords,
+      }),
+    });
+    if (serverRes.ok) {
+      const data = await serverRes.json();
+      return {
+        success: true,
+        count: validRows.length,
+        message: data.message || `Successfully synchronized ${validRows.length} ward members to Google Sheet!`,
+      };
+    }
+  } catch (serverErr) {
+    console.warn("Central server batch route failed, attempting direct fetch:", serverErr);
+  }
+
+  // 2. Direct client fallback
+  const scriptUrl = getSavedScriptUrl();
   if (scriptUrl) {
     try {
       await fetch(scriptUrl, {

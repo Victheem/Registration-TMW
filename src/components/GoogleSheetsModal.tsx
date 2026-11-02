@@ -114,12 +114,17 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
           {/* Web App URL Form */}
           <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-[#0D5C3A] uppercase tracking-wider">
-                Google Apps Script Web App URL:
-              </label>
+              <div>
+                <label className="text-xs font-bold text-[#0D5C3A] uppercase tracking-wider block">
+                  Google Apps Script Web App URL:
+                </label>
+                <span className="text-[11px] text-emerald-800 font-medium">
+                  Synchronizes across all mobile phones, laptops, and field agents automatically.
+                </span>
+              </div>
               {urlInput && (
                 <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-200/60 px-2 py-0.5 rounded">
-                  Configured
+                  Active (All Devices)
                 </span>
               )}
             </div>
