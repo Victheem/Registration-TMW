@@ -63,6 +63,7 @@ interface ForwardResult {
   error?: string;
   isUnauthorized?: boolean;
   isNotFound?: boolean;
+  isDevUrl?: boolean;
 }
 
 async function forwardToGoogleSheets(scriptUrl: string, payload: any): Promise<ForwardResult> {
@@ -70,88 +71,89 @@ async function forwardToGoogleSheets(scriptUrl: string, payload: any): Promise<F
     return { success: false, error: "No Google Apps Script URL provided." };
   }
 
-  let targetUrl = scriptUrl.trim();
-  // Candidate URLs: if user entered /dev, test /exec candidate as well
-  const urlsToTry = [targetUrl];
+  const targetUrl = scriptUrl.trim();
+
+  // /dev URLs are developer test URLs and require developer cookies; Google rejects external devices & servers
   if (targetUrl.endsWith("/dev")) {
-    urlsToTry.push(targetUrl.replace(/\/dev$/, "/exec"));
+    return {
+      success: false,
+      isUnauthorized: true,
+      isDevUrl: true,
+      error: "Google Apps Script /dev URLs block external devices and server sync. Please create a Web App Deployment (Deploy > New deployment > Web app > Who has access: Anyone) to get a live /exec URL.",
+    };
   }
 
-  for (const url of urlsToTry) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-        },
-        body: JSON.stringify(payload),
-        redirect: "follow",
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
 
-      if (res.status === 401) {
-        return {
-          success: false,
-          httpStatus: 401,
-          isUnauthorized: true,
-          error: "Google Apps Script rejected with 401 Unauthorized. Access must be set to 'Anyone' in deployment settings.",
-        };
-      }
+    if (res.status === 401) {
+      return {
+        success: false,
+        httpStatus: 401,
+        isUnauthorized: true,
+        error: "Google Apps Script rejected with 401 Unauthorized. Access must be set to 'Anyone' in deployment settings.",
+      };
+    }
 
-      if (res.status === 404) {
-        return {
-          success: false,
-          httpStatus: 404,
-          isNotFound: true,
-          error: "Google Apps Script Web App URL returned 404 Not Found. Please check the URL.",
-        };
-      }
+    if (res.status === 404) {
+      return {
+        success: false,
+        httpStatus: 404,
+        isNotFound: true,
+        error: "Google Apps Script Web App URL returned 404 Not Found. Please check your deployment URL.",
+      };
+    }
 
-      const text = await res.text();
+    const text = await res.text();
 
-      // Check if redirected to Google sign-in page (happens when "Who has access" is set to "Only myself")
-      if (
-        text.includes("accounts.google.com") ||
-        text.includes("ServiceLogin") ||
-        text.includes("<title>Google Accounts</title>") ||
-        text.includes("Sorry, unable to open the file at present") ||
-        text.includes("Page not found")
-      ) {
-        return {
-          success: false,
-          httpStatus: res.status,
-          isUnauthorized: true,
-          error: "Google redirected to login screen or file error. Apps Script deployment 'Who has access' must be set to 'Anyone'.",
-        };
-      }
-
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(text);
-      } catch {}
-
-      if (res.ok || res.status === 200 || res.status === 302 || (parsed && parsed.status === "success")) {
-        // If the /exec candidate succeeded when /dev was passed, update config.json automatically
-        if (url !== scriptUrl.trim()) {
-          saveConfig({ scriptUrl: url });
-        }
-        return { success: true, httpStatus: res.status };
-      }
-
+    // Check if redirected to Google sign-in page (happens when "Who has access" is set to "Only myself" or /dev URL)
+    if (
+      text.includes("accounts.google.com") ||
+      text.includes("ServiceLogin") ||
+      text.includes("<title>Google Accounts</title>") ||
+      text.includes("Sorry, unable to open the file at present") ||
+      text.includes("Page not found")
+    ) {
       return {
         success: false,
         httpStatus: res.status,
-        error: parsed?.message || text.substring(0, 200) || `Received status ${res.status}`,
+        isUnauthorized: true,
+        error: "Google redirected to login screen or file error. Apps Script deployment 'Who has access' must be set to 'Anyone'.",
       };
-    } catch (err: any) {
-      console.warn(`Failed forwarding to Google Apps Script (${url}):`, err?.message);
     }
-  }
 
-  return { success: false, error: "Failed to connect to Google Apps Script. Check network and script URL." };
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {}
+
+    if (res.ok || res.status === 200 || res.status === 302 || (parsed && parsed.status === "success")) {
+      return { success: true, httpStatus: res.status };
+    }
+
+    return {
+      success: false,
+      httpStatus: res.status,
+      error: parsed?.message || text.substring(0, 200) || `Received status ${res.status}`,
+    };
+  } catch (err: any) {
+    console.warn(`Failed forwarding to Google Apps Script (${targetUrl}):`, err?.message);
+    return {
+      success: false,
+      error: err?.name === "AbortError" ? "Google Apps Script request timed out after 6 seconds." : (err?.message || "Connection failed."),
+    };
+  }
 }
 
 async function startServer() {
@@ -166,6 +168,7 @@ async function startServer() {
     res.json({
       success: true,
       scriptUrl: config.scriptUrl || "",
+      isDevUrl: Boolean(config.scriptUrl && config.scriptUrl.trim().endsWith("/dev")),
       isConfigured: Boolean(config.scriptUrl && config.scriptUrl.trim()),
     });
   });
@@ -177,6 +180,7 @@ async function startServer() {
     res.json({
       success: true,
       scriptUrl: sanitizedUrl,
+      isDevUrl: sanitizedUrl.endsWith("/dev"),
       message: sanitizedUrl 
         ? "Google Apps Script endpoint saved across all devices!" 
         : "Google Apps Script endpoint cleared."
@@ -209,6 +213,15 @@ async function startServer() {
       }
 
       const isDevUrl = urlToTest.endsWith("/dev");
+      if (isDevUrl) {
+        res.json({
+          success: false,
+          ok: false,
+          isDevUrl: true,
+          message: "⚠️ Developer Test URL detected (/dev). Google /dev URLs block external devices, phones, and background servers. In Google Apps Script: Click Deploy ➔ New deployment ➔ Select type: Web app ➔ Who has access: Anyone ➔ Deploy, then copy the live /exec URL."
+        });
+        return;
+      }
 
       // Ping test payload that will NOT write a row to the user's sheet
       const pingPayload = {
@@ -220,13 +233,12 @@ async function startServer() {
       const result = await forwardToGoogleSheets(urlToTest, pingPayload);
 
       if (result.success) {
-        const verifiedUrl = isDevUrl ? urlToTest.replace(/\/dev$/, "/exec") : urlToTest;
-        saveConfig({ scriptUrl: verifiedUrl });
+        saveConfig({ scriptUrl: urlToTest });
         res.json({
           success: true,
           ok: true,
           isDevUrl: false,
-          verifiedUrl,
+          verifiedUrl: urlToTest,
           message: "Success! Google Sheet connected and accepting live registrations across all devices."
         });
         return;
@@ -237,7 +249,7 @@ async function startServer() {
           success: false,
           ok: false,
           isUnauthorized: true,
-          isDevUrl,
+          isDevUrl: false,
           message: "Google returned 401 Unauthorized! In Google Apps Script, click Deploy > Manage deployments > Edit (pencil icon) > change 'Who has access' to 'Anyone' (NOT 'Only myself') > Deploy."
         });
         return;
@@ -246,7 +258,7 @@ async function startServer() {
       res.json({
         success: false,
         ok: false,
-        isDevUrl,
+        isDevUrl: false,
         message: result.error || "Unable to reach Google Apps Script Web App. Please check your deployment settings."
       });
     } catch (err: any) {
@@ -264,6 +276,7 @@ async function startServer() {
       success: true,
       records,
       count: records.length,
+      serverTime: new Date().toISOString()
     });
   });
 
@@ -283,6 +296,7 @@ async function startServer() {
       }
 
       const effectiveScriptUrl = config.scriptUrl || (record.scriptUrl?.trim() || "");
+      const isDevUrl = effectiveScriptUrl.endsWith("/dev");
 
       const existing = loadRegistrations();
       
@@ -291,33 +305,60 @@ async function startServer() {
       const isExco = Boolean(record.isExco);
       const role = record.role || (isExco ? "EXCO Member" : "General Member (Non-EXCO)");
 
-      // Forward to Google Apps Script
-      let forwardResult: ForwardResult = { success: false };
-      if (effectiveScriptUrl) {
-        forwardResult = await forwardToGoogleSheets(effectiveScriptUrl, record);
-      }
-
-      const syncStatus = forwardResult.success ? "synced" : "local_saved";
-
+      // 1. CRITICAL: SAVE TO CENTRAL DATABASE IMMEDIATELY!
+      // This guarantees that Device B, mobile phones, and all coordinators instantly see this registration
+      // without being blocked if Google Apps Script is slow, times out, or returns 401.
       const enhancedRecord = {
         ...record,
         isExco,
         role,
-        status: syncStatus,
+        status: "local_saved" as const,
         savedAt: new Date().toISOString(),
       };
 
       // Strip temporary scriptUrl from saved record
       delete enhancedRecord.scriptUrl;
 
+      // Save to server disk right now
       const updated = [enhancedRecord, ...filtered];
       saveRegistrations(updated);
 
+      // 2. FORWARD TO GOOGLE APPS SCRIPT IF CONFIGURED
+      let forwardResult: ForwardResult = { success: false };
+      if (effectiveScriptUrl && !isDevUrl) {
+        forwardResult = await forwardToGoogleSheets(effectiveScriptUrl, enhancedRecord);
+      } else if (isDevUrl) {
+        forwardResult = {
+          success: false,
+          isDevUrl: true,
+          isUnauthorized: true,
+          error: "Developer test URL (/dev) detected. Google blocks external devices from submitting to /dev URLs."
+        };
+      }
+
       if (forwardResult.success) {
+        // Mark as synced in central server storage
+        enhancedRecord.status = "synced";
+        const currentRecords = loadRegistrations();
+        const reUpdated = currentRecords.map((r) => r.id === enhancedRecord.id ? { ...r, status: "synced" } : r);
+        saveRegistrations(reUpdated);
+
         res.json({
           success: true,
           mode: "sheets",
-          message: "Registration submitted and synced to Google Sheets!",
+          message: "Registration submitted and synced live to Google Sheets!",
+          record: enhancedRecord,
+        });
+        return;
+      }
+
+      if (isDevUrl) {
+        res.json({
+          success: true,
+          mode: "unauthorized_401",
+          isUnauthorized: true,
+          isDevUrl: true,
+          message: "Saved to Central Registry! ⚠️ Notice: Your Google Sheet URL ends in /dev. Create a live deployment (/exec) with 'Who has access: Anyone' to auto-sync to Sheets.",
           record: enhancedRecord,
         });
         return;
@@ -328,7 +369,7 @@ async function startServer() {
           success: true,
           mode: "unauthorized_401",
           isUnauthorized: true,
-          message: "Saved to central registry! ⚠️ Note: Google Sheet sync blocked (Set Apps Script deployment access to 'Anyone').",
+          message: "Saved to Central Registry! ⚠️ Note: Google Sheet sync blocked (Set Apps Script deployment access to 'Anyone').",
           record: enhancedRecord,
         });
         return;
@@ -338,8 +379,8 @@ async function startServer() {
         success: true,
         mode: effectiveScriptUrl ? "queued" : "server_saved",
         message: effectiveScriptUrl 
-          ? "Registration saved to central database. Will auto-sync when Google Sheet endpoint is active."
-          : "Registration saved centrally. Connect your Google Sheet to auto-sync.",
+          ? "Registration saved to Central Database! (Queued for Google Sheets sync)."
+          : "Registration saved to Central Database! Connect your Google Sheet in Settings to auto-sync.",
         record: enhancedRecord,
       });
     } catch (err: any) {
@@ -358,34 +399,57 @@ async function startServer() {
 
       const config = loadConfig();
       const existing = loadRegistrations();
+      const isDevUrl = Boolean(config.scriptUrl && config.scriptUrl.trim().endsWith("/dev"));
 
-      let forwardResult: ForwardResult = { success: false };
-      if (config.scriptUrl) {
-        forwardResult = await forwardToGoogleSheets(config.scriptUrl, { header, records });
-      }
-
-      const syncStatus = forwardResult.success ? "synced" : "local_saved";
-
+      // 1. PERSIST BATCH TO CENTRAL DATABASE IMMEDIATELY
       const newRecords = records.map((r: any) => ({
         ...r,
         state: r.state || header?.state || "",
         lga: r.lga || header?.lga || "",
         ward: r.ward || header?.ward || "",
-        status: syncStatus,
+        status: "local_saved" as const,
         savedAt: new Date().toISOString(),
       }));
 
+      // Combine and save immediately so all devices can see them in Registry
       const combined = [...newRecords, ...existing];
       saveRegistrations(combined);
+
+      // 2. FORWARD TO GOOGLE APPS SCRIPT
+      let forwardResult: ForwardResult = { success: false };
+      if (config.scriptUrl && !isDevUrl) {
+        forwardResult = await forwardToGoogleSheets(config.scriptUrl, { header, records: newRecords });
+      }
+
+      if (forwardResult.success) {
+        const reUpdated = loadRegistrations().map((r) => {
+          if (newRecords.some((nr: any) => nr.id === r.id)) {
+            return { ...r, status: "synced" };
+          }
+          return r;
+        });
+        saveRegistrations(reUpdated);
+
+        res.json({
+          success: true,
+          count: newRecords.length,
+          mode: "sheets",
+          message: `Successfully saved ${newRecords.length} members and synced live to Google Sheets!`,
+        });
+        return;
+      }
 
       res.json({
         success: true,
         count: newRecords.length,
-        mode: forwardResult.success ? "sheets" : (forwardResult.isUnauthorized ? "unauthorized_401" : "server_saved"),
-        isUnauthorized: forwardResult.isUnauthorized,
-        message: forwardResult.success
-          ? `Successfully saved ${newRecords.length} members and synced to Google Sheets!`
-          : `Saved ${newRecords.length} members to database.${forwardResult.isUnauthorized ? " ⚠️ Note: Google Sheet returned 401 (Set 'Who has access' to 'Anyone')." : ""}`,
+        mode: forwardResult.isUnauthorized ? "unauthorized_401" : "server_saved",
+        isUnauthorized: forwardResult.isUnauthorized || isDevUrl,
+        isDevUrl,
+        message: `Saved ${newRecords.length} members to Central Registry!${
+          isDevUrl
+            ? " ⚠️ Notice: Google Sheet URL is a /dev URL. Deploy as Web App (/exec) with 'Who has access: Anyone' to sync."
+            : (forwardResult.isUnauthorized ? " ⚠️ Note: Google Sheet returned 401 (Set 'Who has access' to 'Anyone')." : "")
+        }`,
       });
     } catch (err: any) {
       console.error("Error submitting batch sheet:", err);

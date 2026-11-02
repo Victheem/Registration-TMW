@@ -30,6 +30,9 @@ interface SubmissionsTableProps {
   onDeleteRecord: (id: string) => void;
   onClearAll: () => void;
   isBackendConnected: boolean;
+  scriptUrl?: string;
+  lastSyncTime?: Date;
+  isRefreshing?: boolean;
   openSettings: () => void;
 }
 
@@ -40,6 +43,9 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   onDeleteRecord,
   onClearAll,
   isBackendConnected,
+  scriptUrl = "",
+  lastSyncTime,
+  isRefreshing = false,
   openSettings,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -47,6 +53,8 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   const [excoFilter, setExcoFilter] = useState<"all" | "exco" | "non_exco">("all");
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const isDevUrl = scriptUrl.trim().endsWith("/dev");
 
   // Filter records
   const filtered = records.filter(r => {
@@ -76,6 +84,11 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
 
   const handleSyncPending = async () => {
     if (!isBackendConnected) {
+      openSettings();
+      return;
+    }
+
+    if (isDevUrl) {
       openSettings();
       return;
     }
@@ -130,8 +143,64 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
     setTimeout(() => setSyncFeedback(null), 5000);
   };
 
+  const formattedSyncTime = lastSyncTime 
+    ? lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : "Just now";
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5">
+      {/* Real-Time Cross-Device Synchronization Status Banner */}
+      <div className="bg-emerald-900 text-white rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
+          </span>
+          <span className="font-bold tracking-wide">
+            Central Registry Live:
+          </span>
+          <span className="text-emerald-100 hidden sm:inline">
+            Submissions on any phone or laptop appear here automatically (syncs every 3.5s).
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 ml-auto">
+          <span className="text-[11px] text-emerald-200">
+            Last updated: <span className="font-mono font-semibold text-white">{formattedSyncTime}</span>
+          </span>
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="px-2.5 py-1 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 hover:text-white rounded font-semibold text-[11px] flex items-center gap-1.5 transition-colors border border-emerald-700"
+            title="Fetch latest registrations from all field agents"
+          >
+            <RefreshCw className={`w-3 h-3 ${isRefreshing ? "animate-spin text-amber-300" : ""}`} />
+            <span>{isRefreshing ? "Syncing..." : "Refresh Now"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Warning callout if connected URL is /dev */}
+      {isDevUrl && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
+          <div className="flex items-start sm:items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
+            <div>
+              <strong className="font-bold text-amber-900">Developer Test URL Active (/dev):</strong>
+              <span className="ml-1 text-slate-800">
+                All records are saved centrally and sync across Device A and Device B. To sync directly to your Google Sheet, create a live Web App deployment (/exec) with &apos;Who has access: Anyone&apos;.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={openSettings}
+            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg text-xs whitespace-nowrap self-start sm:self-auto shrink-0 transition-colors"
+          >
+            Update Google Sheet URL
+          </button>
+        </div>
+      )}
+
       {/* Header and KPI strip */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -181,7 +250,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
               ) : (
                 <>
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Sync Pending ({pendingCount})</span>
+                  <span>Sync to Sheets ({pendingCount})</span>
                 </>
               )}
             </button>

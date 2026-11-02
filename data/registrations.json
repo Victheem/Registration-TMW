@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "id": "tmw-1793645710645",
+    "referenceId": "TMW-LA-15400645",
+    "state": "Lagos",
+    "lga": "Ikeja",
+    "ward": "04",
+    "fullName": "Otun",
+    "phone": "0803 098 3999",
+    "vin": "999949UU9U9",
+    "pollingUnit": "PU 014",
+    "bankName": "Access Bank",
+    "accountNumber": "0000000000",
+    "signature": "OTUN",
+    "timestamp": "2026-11-02T18:55:10.645Z",
+    "status": "local_saved",
+    "isExco": false,
+    "excoLevel": "None",
+    "role": "General Member (Non-EXCO)",
+    "savedAt": "2026-11-02T19:22:40.878Z"
+  }
+]

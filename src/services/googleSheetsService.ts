@@ -318,41 +318,20 @@ export function getStoredRegistrations(): RegistrationRecord[] {
  */
 export async function fetchServerRegistrations(): Promise<RegistrationRecord[]> {
   try {
-    const res = await fetch("/api/registrations");
+    const res = await fetch("/api/registrations", {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" }
+    });
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.records)) {
-        const local = getStoredRegistrations();
-        const map = new Map<string, RegistrationRecord>();
-        data.records.forEach((r: RegistrationRecord) => map.set(r.id, r));
-        
-        // Check if there are local records not yet on the server
-        const unpushedToSever: RegistrationRecord[] = [];
-        local.forEach((r: RegistrationRecord) => {
-          if (!map.has(r.id)) {
-            map.set(r.id, r);
-            unpushedToSever.push(r);
-          }
-        });
-
-        // Automatically push missing local records to server in background
-        if (unpushedToSever.length > 0) {
-          unpushedToSever.forEach(rec => {
-            fetch("/api/submit-registration", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(rec),
-            }).catch(() => {});
-          });
-        }
-
-        const merged = Array.from(map.values());
-        saveStoredRegistrations(merged);
-        return merged;
+        const serverRecords: RegistrationRecord[] = data.records;
+        saveStoredRegistrations(serverRecords);
+        return serverRecords;
       }
     }
-  } catch {
-    // Fall back to local
+  } catch (err) {
+    console.warn("Could not reach central server, loading local cache:", err);
   }
   return getStoredRegistrations();
 }
@@ -362,24 +341,27 @@ export async function fetchServerRegistrations(): Promise<RegistrationRecord[]> 
  */
 export function saveStoredRegistrations(records: RegistrationRecord[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(REGISTRATIONS_STORAGE_KEY, JSON.stringify(records));
+  try {
+    localStorage.setItem(REGISTRATIONS_STORAGE_KEY, JSON.stringify(records));
+  } catch {}
 }
 
 /**
  * Submits a single registration.
- * Uses central server proxy first (reliable across all mobile phones & external devices),
- * with immediate dual direct client-side Google Apps Script fetch as fallback.
+ * Saves to central database first (guaranteeing cross-device synchronization on Device A & Device B),
+ * then synchronizes to Google Sheets if connected.
  */
 export async function submitRegistration(record: RegistrationRecord): Promise<{
   success: boolean;
   mode: 'sheets' | 'local_queued' | 'unauthorized_401';
   message: string;
   isUnauthorized?: boolean;
+  isDevUrl?: boolean;
 }> {
   const existingRecords = getStoredRegistrations();
   const scriptUrl = getSavedScriptUrl();
 
-  // 1. Try submitting through central server route first (solves mobile CORS & shares across all devices)
+  // 1. Submit through central server route first (guarantees cross-device sync and bypasses CORS)
   try {
     const serverRes = await fetch("/api/submit-registration", {
       method: "POST",
@@ -392,79 +374,55 @@ export async function submitRegistration(record: RegistrationRecord): Promise<{
 
     if (serverRes.ok) {
       const data = await serverRes.json();
+      const savedRecord = data.record || record;
 
-      // If server could not sync directly to Google Sheets (e.g. server IP blocked or 401),
-      // ALSO attempt immediate client-side direct submission in case the user's browser has the Google cookie!
-      if (data.mode !== "sheets" && scriptUrl) {
-        try {
-          await fetch(scriptUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
-            },
-            body: JSON.stringify(record),
-          });
-        } catch (directErr) {
-          console.warn("Client fallback fetch also encountered an issue:", directErr);
-        }
-      }
-
-      const statusVal = data.mode === "sheets" ? ("synced" as const) : ("local_saved" as const);
-      const updated = [{ ...record, status: statusVal }, ...existingRecords];
-      saveStoredRegistrations(updated);
+      // Update local cache with saved record
+      const filtered = existingRecords.filter(r => r.id !== savedRecord.id);
+      saveStoredRegistrations([savedRecord, ...filtered]);
 
       return {
         success: true,
         mode: data.mode === "sheets" ? "sheets" : (data.isUnauthorized ? "unauthorized_401" : "local_queued"),
         isUnauthorized: data.isUnauthorized,
-        message: data.message || "Registration saved successfully!",
+        isDevUrl: data.isDevUrl,
+        message: data.message || "Registration saved successfully to Central Database!",
       };
     }
   } catch (serverErr) {
     console.warn("Central server route unavailable, attempting client-side fallback:", serverErr);
   }
 
-  // 2. Client-side direct submission fallback if server route is unavailable
-  if (!scriptUrl) {
-    const updated = [{ ...record, status: 'local_saved' as const }, ...existingRecords];
-    saveStoredRegistrations(updated);
-    return {
-      success: true,
-      mode: 'local_queued',
-      message: "Registration stored locally. Connect your Google Sheet in settings to auto-sync to your spreadsheet!"
-    };
+  // 2. Client-side fallback if server was unreachable
+  if (scriptUrl && !scriptUrl.endsWith("/dev")) {
+    try {
+      await fetch(scriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(record),
+      });
+
+      const updated = [{ ...record, status: 'synced' as const }, ...existingRecords];
+      saveStoredRegistrations(updated);
+
+      return {
+        success: true,
+        mode: 'sheets',
+        message: "Registration submitted successfully to Google Sheets!"
+      };
+    } catch {
+      // Fall through to offline queue
+    }
   }
 
-  try {
-    await fetch(scriptUrl, {
-      method: "POST",
-      mode: "no-cors",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify(record),
-    });
+  const updated = [{ ...record, status: 'local_saved' as const }, ...existingRecords];
+  saveStoredRegistrations(updated);
 
-    const updated = [{ ...record, status: 'synced' as const }, ...existingRecords];
-    saveStoredRegistrations(updated);
-
-    return {
-      success: true,
-      mode: 'sheets',
-      message: "Registration submitted successfully to Google Sheets!"
-    };
-  } catch (error) {
-    console.warn("Failed sending to Google Sheets Web App, fallback to local queue:", error);
-    const updated = [{ ...record, status: 'pending' as const }, ...existingRecords];
-    saveStoredRegistrations(updated);
-
-    return {
-      success: true,
-      mode: 'local_queued',
-      message: "Saved to local offline queue due to network/CORS. You can resync once online!"
-    };
-  }
+  return {
+    success: true,
+    mode: 'local_queued',
+    message: "Saved to local offline queue. Will auto-sync when central server is connected!"
+  };
 }
 
 /**

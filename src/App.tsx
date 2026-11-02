@@ -68,9 +68,27 @@ export default function App() {
     }))
   });
 
-  // Load records and saved Google Apps Script URL on initial load and sync across devices
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshRecords = async () => {
+    setIsRefreshing(true);
+    try {
+      const updated = await fetchServerRegistrations();
+      if (Array.isArray(updated)) {
+        setRecords(updated);
+        setLastSyncTime(new Date());
+      }
+    } catch (err) {
+      console.warn("Error refreshing server records:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Continuous multi-device synchronization
   useEffect(() => {
-    // 1. Load local cache immediately
+    // 1. Initial load
     const loadedUrl = getSavedScriptUrl();
     if (loadedUrl) setScriptUrl(loadedUrl);
     setRecords(getStoredRegistrations());
@@ -82,13 +100,37 @@ export default function App() {
       }
     });
 
-    // 3. Fetch server-wide registrations so submissions from mobile phones appear in the registry
-    fetchServerRegistrations().then((serverRecs) => {
-      if (serverRecs && serverRecs.length > 0) {
-        setRecords(serverRecs);
+    // 3. Initial fetch from central server
+    refreshRecords();
+
+    // 4. Live polling every 3.5 seconds across all devices (Device A, Device B, mobile phones)
+    const interval = setInterval(() => {
+      refreshRecords();
+    }, 3500);
+
+    // 5. Instant refresh whenever device window/tab gains focus
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshRecords();
       }
-    });
+    };
+
+    window.addEventListener("focus", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
+
+  // When coordinator switches to Registry tab, trigger immediate live fetch
+  useEffect(() => {
+    if (activeTab === "registry") {
+      refreshRecords();
+    }
+  }, [activeTab]);
 
   // Redirect to individual tab if registry tab is requested while in public view
   useEffect(() => {
@@ -96,11 +138,6 @@ export default function App() {
       setActiveTab("individual");
     }
   }, [activeTab, isAdminMode]);
-
-  const refreshRecords = async () => {
-    const updated = await fetchServerRegistrations();
-    setRecords(updated);
-  };
 
   const handleSingleSuccess = (record: RegistrationRecord) => {
     refreshRecords();
@@ -216,6 +253,9 @@ export default function App() {
             onDeleteRecord={handleDeleteRecord}
             onClearAll={handleClearAll}
             isBackendConnected={Boolean(scriptUrl)}
+            scriptUrl={scriptUrl}
+            lastSyncTime={lastSyncTime}
+            isRefreshing={isRefreshing}
             openSettings={() => setIsSettingsOpen(true)}
           />
         )}

@@ -142,26 +142,25 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
             {/* Warning if URL ends in /dev */}
             {urlInput && urlInput.trim().endsWith("/dev") && (
-              <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 space-y-1.5">
-                <div className="flex items-center gap-1.5 font-bold text-amber-950">
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-950 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-amber-900">
                   <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>Developer Test URL Detected (/dev)</span>
                 </div>
-                <p className="text-[11px] leading-relaxed">
-                  Google Apps Script blocks submissions from mobile phones and background sync on <code>/dev</code> URLs. You must use the live <code>/exec</code> URL.
+                <p className="text-[11px] text-amber-900 leading-relaxed">
+                  Google Apps Script blocks submissions from mobile phones and background sync on <code>/dev</code> test URLs. 
+                  All registrations will still be saved to the <strong>TMW Central Database</strong>, but to sync live to your Google Sheet you need a live <code>/exec</code> URL.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const converted = urlInput.trim().replace(/\/dev$/, "/exec");
-                    setUrlInput(converted);
-                    saveScriptUrl(converted);
-                    onUrlUpdated(converted);
-                  }}
-                  className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white font-semibold text-[11px] rounded transition-colors inline-flex items-center gap-1"
-                >
-                  <span>Switch to /exec Web App URL</span>
-                </button>
+                <div className="bg-white/80 p-2.5 rounded border border-amber-200 text-[11px] text-slate-800 space-y-1">
+                  <strong className="block text-amber-900 font-semibold">How to get your live /exec URL in 20 seconds:</strong>
+                  <ol className="list-decimal list-inside space-y-0.5 text-slate-700 font-medium">
+                    <li>In Google Sheets, go to <strong>Extensions &gt; Apps Script</strong>.</li>
+                    <li>Click the blue <strong>Deploy</strong> button at top right &gt; <strong>New deployment</strong>.</li>
+                    <li>Click the gear icon next to &apos;Select type&apos;, choose <strong>Web app</strong>.</li>
+                    <li>Set <strong>Who has access</strong> to <span className="font-bold text-emerald-800">Anyone</span> (vital for all devices).</li>
+                    <li>Click <strong>Deploy</strong>, authorize if prompted, and copy the Web App URL (ends in <code>/exec</code>).</li>
+                  </ol>
+                </div>
               </div>
             )}
 
