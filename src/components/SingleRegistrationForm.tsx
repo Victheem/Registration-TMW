@@ -210,7 +210,7 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
       } catch {}
 
       setFeedback({
-        type: "success",
+        type: res.mode === "sheets" ? "success" : (res.isUnauthorized ? "info" : "success"),
         message: res.message
       });
 
@@ -817,17 +817,27 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
               className={`p-4 rounded-lg flex items-start gap-3 text-sm ${
                 feedback.type === "success"
                   ? "bg-emerald-50 text-emerald-900 border border-emerald-300"
+                  : feedback.type === "info"
+                  ? "bg-amber-50 text-amber-900 border border-amber-300"
                   : "bg-red-50 text-red-900 border border-red-300"
               }`}
             >
               {feedback.type === "success" ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              ) : feedback.type === "info" ? (
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               ) : (
                 <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
               )}
               <div className="flex-1">
-                <p className="font-semibold">{feedback.type === "success" ? "Submitted Successfully" : "Submission Alert"}</p>
-                <p className="text-xs mt-0.5">{feedback.message}</p>
+                <p className="font-semibold">
+                  {feedback.type === "success"
+                    ? "Submitted Successfully"
+                    : feedback.type === "info"
+                    ? "Saved to Registry (Sync Note)"
+                    : "Submission Alert"}
+                </p>
+                <p className="text-xs mt-0.5 leading-relaxed">{feedback.message}</p>
               </div>
             </div>
           )}

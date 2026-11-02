@@ -140,6 +140,31 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-hidden"
             />
 
+            {/* Warning if URL ends in /dev */}
+            {urlInput && urlInput.trim().endsWith("/dev") && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                  <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Developer Test URL Detected (/dev)</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  Google Apps Script blocks submissions from mobile phones and background sync on <code>/dev</code> URLs. You must use the live <code>/exec</code> URL.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const converted = urlInput.trim().replace(/\/dev$/, "/exec");
+                    setUrlInput(converted);
+                    saveScriptUrl(converted);
+                    onUrlUpdated(converted);
+                  }}
+                  className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white font-semibold text-[11px] rounded transition-colors inline-flex items-center gap-1"
+                >
+                  <span>Switch to /exec Web App URL</span>
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               <div className="flex items-center gap-2">
                 <button
@@ -186,18 +211,34 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
             {testResult && (
               <div
-                className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                className={`p-3.5 rounded-lg text-xs space-y-2 ${
                   testResult.ok
                     ? "bg-emerald-100/80 text-emerald-900 border border-emerald-300"
-                    : "bg-red-50 text-red-900 border border-red-200"
+                    : "bg-red-50 text-red-900 border border-red-300"
                 }`}
               >
-                {testResult.ok ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-700 shrink-0" />
+                <div className="flex items-start gap-2">
+                  {testResult.ok ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
+                  )}
+                  <span className="font-medium leading-relaxed">{testResult.message}</span>
+                </div>
+
+                {/* Specific 401 unauthorized walkthrough */}
+                {!testResult.ok && testResult.message.includes("401") && (
+                  <div className="mt-2 pt-2 border-t border-red-200/80 text-[11px] text-red-950 space-y-1 bg-white/70 p-2.5 rounded">
+                    <strong className="block font-bold text-red-900">How to fix in your Google Sheet (takes 15 seconds):</strong>
+                    <ol className="list-decimal list-inside space-y-0.5 text-slate-800">
+                      <li>In Google Sheets top menu, click <strong>Extensions ➔ Apps Script</strong>.</li>
+                      <li>At top-right, click the blue <strong>Deploy</strong> button ➔ <strong>Manage deployments</strong>.</li>
+                      <li>Click the <strong>Pencil icon (Edit)</strong> next to your Web App.</li>
+                      <li>Under <strong>"Who has access"</strong>, change from <em>"Only myself"</em> to <strong className="text-red-700 font-bold">Anyone</strong>.</li>
+                      <li>Click <strong>Deploy</strong>, copy the generated Web App URL, and paste it back here!</li>
+                    </ol>
+                  </div>
                 )}
-                <span>{testResult.message}</span>
               </div>
             )}
           </div>

@@ -6,7 +6,7 @@
 
 import React, { useState } from "react";
 import { RegistrationRecord } from "../types";
-import { exportToCSV, submitRegistration } from "../services/googleSheetsService";
+import { exportToCSV, submitRegistration, syncAllPendingToSheets } from "../services/googleSheetsService";
 import { 
   Search, 
   Download, 
@@ -82,15 +82,33 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
 
     const pendingRecords = records.filter(r => r.status === "pending" || r.status === "local_saved");
     if (pendingRecords.length === 0) {
-      setSyncFeedback("All records are already synchronized!");
+      setSyncFeedback("All records are already synchronized to Google Sheets!");
       setTimeout(() => setSyncFeedback(null), 3000);
       return;
     }
 
     setIsSyncing(true);
     setSyncFeedback(null);
-    let successCount = 0;
 
+    // Try batch server sync first
+    const batchRes = await syncAllPendingToSheets();
+    if (batchRes.success) {
+      setIsSyncing(false);
+      onRefresh();
+      setSyncFeedback(batchRes.message);
+      setTimeout(() => setSyncFeedback(null), 5000);
+      return;
+    }
+
+    if (batchRes.isUnauthorized) {
+      setIsSyncing(false);
+      setSyncFeedback("Sync blocked by Google (401 Unauthorized): In Apps Script deployment, change 'Who has access' to 'Anyone'.");
+      setTimeout(() => setSyncFeedback(null), 7000);
+      return;
+    }
+
+    // Fallback: Individual sync with dual-channel fallback
+    let successCount = 0;
     for (const record of pendingRecords) {
       try {
         const res = await submitRegistration(record);
@@ -104,8 +122,12 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
 
     setIsSyncing(false);
     onRefresh();
-    setSyncFeedback(`Successfully synchronized ${successCount} records to your Google Sheet!`);
-    setTimeout(() => setSyncFeedback(null), 4000);
+    if (successCount > 0) {
+      setSyncFeedback(`Successfully synchronized ${successCount} records to your Google Sheet!`);
+    } else {
+      setSyncFeedback("Unable to sync: check that Google Apps Script deployment access is set to 'Anyone'.");
+    }
+    setTimeout(() => setSyncFeedback(null), 5000);
   };
 
   return (

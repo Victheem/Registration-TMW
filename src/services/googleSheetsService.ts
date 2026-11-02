@@ -27,9 +27,10 @@ export const GOOGLE_APPS_SCRIPT_BOILERPLATE = `/**
  * 5. Select type: "Web app" (click gear icon if prompted).
  * 6. Set Description: "TMW Electoral Ward Registration Endpoint".
  * 7. Set "Execute as": "Me" (your Google account).
- * 8. Set "Who has access": "Anyone"  <-- CRITICAL for frontend submission!
+ * 8. Set "Who has access": "Anyone"  <-- CRITICAL for phone & external device submissions!
+ *    (If left as "Only myself", external devices and servers receive 401 Unauthorized!)
  * 9. Click "Deploy", review permissions, and authorize your Google account.
- * 10. Copy the generated Web App URL and paste it into the TMW App Settings!
+ * 10. Copy the generated Web App URL (ending in /exec) and paste it into TMW App Settings!
  */
 
 function doPost(e) {
@@ -44,14 +45,6 @@ function doPost(e) {
   }
 
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getActiveSheet();
-    
-    // Auto-initialize header row if sheet is fresh
-    if (sheet.getLastRow() === 0) {
-      setupSheetHeaders(sheet);
-    }
-
     var payload = {};
     if (e && e.postData && e.postData.contents) {
       try {
@@ -65,9 +58,45 @@ function doPost(e) {
 
     var timestamp = new Date();
     var formattedDate = Utilities.formatDate(timestamp, "Africa/Lagos", "yyyy-MM-dd HH:mm:ss");
+
+    // Non-intrusive connection test / ping
+    if (payload.type === "ping_test" || payload.action === "test_connection") {
+      return createJsonResponse({
+        status: "success",
+        message: "Connection active! TMW Webhook is ready to receive registrations.",
+        timestamp: formattedDate
+      });
+    }
+
+    var ss;
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+    } catch (err) {}
+
+    // Support standalone Apps Script if user passed spreadsheetId
+    if (!ss && payload.spreadsheetId) {
+      try {
+        ss = SpreadsheetApp.openById(payload.spreadsheetId);
+      } catch (err) {}
+    }
+
+    if (!ss) {
+      return createJsonResponse({
+        status: "error",
+        message: "Spreadsheet not found. Please ensure this Apps Script was opened from Extensions > Apps Script inside your Google Sheet."
+      }, 400);
+    }
+
+    var sheet = ss.getActiveSheet();
+    
+    // Auto-initialize header row if sheet is fresh
+    if (sheet.getLastRow() === 0) {
+      setupSheetHeaders(sheet);
+    }
+
     var insertedCount = 0;
 
-    // Handle batch submission (e.g. from the 20-row Electoral Ward Sheet)
+    // Handle batch submission (e.g. from the 20-row Electoral Ward Sheet or central sync)
     if (payload.records && Array.isArray(payload.records)) {
       var rows = [];
       for (var i = 0; i < payload.records.length; i++) {
@@ -75,7 +104,7 @@ function doPost(e) {
         if (!rec.fullName && !rec.names && !rec.phone) continue; // skip blank rows
         var isExcoText = rec.isExco ? "EXCO" : "Non-EXCO";
         var excoLevelText = rec.excoLevel || (rec.isExco ? "Ward" : "None");
-        var roleText = rec.role || (rec.isExco ? "Ward EXCO Member" : "General Member (Non-EXCO)");
+        var roleText = rec.role || (rec.isExco ? "Ward Coordinators" : "General Member (Non-EXCO)");
 
         rows.push([
           formattedDate,
@@ -105,7 +134,7 @@ function doPost(e) {
       // Handle single individual registration
       var singleIsExcoText = payload.isExco ? "EXCO" : "Non-EXCO";
       var singleExcoLevelText = payload.excoLevel || (payload.isExco ? "Ward" : "None");
-      var singleRoleText = payload.role || (payload.isExco ? "Ward EXCO Member" : "General Member (Non-EXCO)");
+      var singleRoleText = payload.role || (payload.isExco ? "Ward Coordinators" : "General Member (Non-EXCO)");
 
       var singleRow = [
         formattedDate,
@@ -296,9 +325,27 @@ export async function fetchServerRegistrations(): Promise<RegistrationRecord[]> 
         const local = getStoredRegistrations();
         const map = new Map<string, RegistrationRecord>();
         data.records.forEach((r: RegistrationRecord) => map.set(r.id, r));
+        
+        // Check if there are local records not yet on the server
+        const unpushedToSever: RegistrationRecord[] = [];
         local.forEach((r: RegistrationRecord) => {
-          if (!map.has(r.id)) map.set(r.id, r);
+          if (!map.has(r.id)) {
+            map.set(r.id, r);
+            unpushedToSever.push(r);
+          }
         });
+
+        // Automatically push missing local records to server in background
+        if (unpushedToSever.length > 0) {
+          unpushedToSever.forEach(rec => {
+            fetch("/api/submit-registration", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(rec),
+            }).catch(() => {});
+          });
+        }
+
         const merged = Array.from(map.values());
         saveStoredRegistrations(merged);
         return merged;
@@ -321,42 +368,64 @@ export function saveStoredRegistrations(records: RegistrationRecord[]): void {
 /**
  * Submits a single registration.
  * Uses central server proxy first (reliable across all mobile phones & external devices),
- * with direct client-side Google Apps Script fetch as fallback.
+ * with immediate dual direct client-side Google Apps Script fetch as fallback.
  */
 export async function submitRegistration(record: RegistrationRecord): Promise<{
   success: boolean;
-  mode: 'sheets' | 'local_queued';
+  mode: 'sheets' | 'local_queued' | 'unauthorized_401';
   message: string;
+  isUnauthorized?: boolean;
 }> {
   const existingRecords = getStoredRegistrations();
+  const scriptUrl = getSavedScriptUrl();
 
   // 1. Try submitting through central server route first (solves mobile CORS & shares across all devices)
   try {
     const serverRes = await fetch("/api/submit-registration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(record),
+      body: JSON.stringify({
+        ...record,
+        scriptUrl: scriptUrl || undefined,
+      }),
     });
 
     if (serverRes.ok) {
       const data = await serverRes.json();
-      const statusVal = data.mode === 'sheets' ? ('synced' as const) : ('local_saved' as const);
+
+      // If server could not sync directly to Google Sheets (e.g. server IP blocked or 401),
+      // ALSO attempt immediate client-side direct submission in case the user's browser has the Google cookie!
+      if (data.mode !== "sheets" && scriptUrl) {
+        try {
+          await fetch(scriptUrl, {
+            method: "POST",
+            mode: "no-cors",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify(record),
+          });
+        } catch (directErr) {
+          console.warn("Client fallback fetch also encountered an issue:", directErr);
+        }
+      }
+
+      const statusVal = data.mode === "sheets" ? ("synced" as const) : ("local_saved" as const);
       const updated = [{ ...record, status: statusVal }, ...existingRecords];
       saveStoredRegistrations(updated);
 
       return {
         success: true,
-        mode: data.mode === 'sheets' ? 'sheets' : 'local_queued',
-        message: data.message || "Registration submitted successfully to Google Sheets!",
+        mode: data.mode === "sheets" ? "sheets" : (data.isUnauthorized ? "unauthorized_401" : "local_queued"),
+        isUnauthorized: data.isUnauthorized,
+        message: data.message || "Registration saved successfully!",
       };
     }
   } catch (serverErr) {
     console.warn("Central server route unavailable, attempting client-side fallback:", serverErr);
   }
 
-  // 2. Client-side fallback if server route is unavailable
-  const scriptUrl = getSavedScriptUrl();
-
+  // 2. Client-side direct submission fallback if server route is unavailable
   if (!scriptUrl) {
     const updated = [{ ...record, status: 'local_saved' as const }, ...existingRecords];
     saveStoredRegistrations(updated);
@@ -509,9 +578,15 @@ export async function submitBatchWardSheet(
 }
 
 /**
- * Tests connection to the provided Google Apps Script Web App URL
+ * Tests connection to the provided Google Apps Script Web App URL via central server
  */
-export async function testConnection(url: string): Promise<{ ok: boolean; message: string }> {
+export async function testConnection(url: string): Promise<{
+  ok: boolean;
+  message: string;
+  isUnauthorized?: boolean;
+  isDevUrl?: boolean;
+  verifiedUrl?: string;
+}> {
   if (!url || !url.startsWith("https://script.google.com/macros/s/")) {
     return {
       ok: false,
@@ -519,11 +594,34 @@ export async function testConnection(url: string): Promise<{ ok: boolean; messag
     };
   }
 
+  // 1. Test via central server probe
+  try {
+    const res = await fetch("/api/test-sheets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scriptUrl: url }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        ok: data.ok,
+        message: data.message,
+        isUnauthorized: data.isUnauthorized,
+        isDevUrl: data.isDevUrl,
+        verifiedUrl: data.verifiedUrl
+      };
+    }
+  } catch (err) {
+    console.warn("Server test endpoint unreachable:", err);
+  }
+
+  // 2. Client fallback probe
   try {
     await fetch(url, { method: "GET", mode: "no-cors" });
     return {
       ok: true,
-      message: "Connection verified! The Google Apps Script endpoint is reachable."
+      message: "Connection reached from browser. Note: ensure 'Who has access' is set to 'Anyone' for external devices."
     };
   } catch (err: any) {
     return {
@@ -531,6 +629,27 @@ export async function testConnection(url: string): Promise<{ ok: boolean; messag
       message: `Could not reach endpoint: ${err?.message || "Check your URL and permissions ('Anyone')."}`
     };
   }
+}
+
+/**
+ * Triggers batch synchronization of all pending records to Google Sheets
+ */
+export async function syncAllPendingToSheets(): Promise<{
+  success: boolean;
+  syncedCount?: number;
+  message: string;
+  isUnauthorized?: boolean;
+}> {
+  try {
+    const res = await fetch("/api/sync-all", { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (err: any) {
+    return { success: false, message: err?.message || "Network error syncing to Google Sheets." };
+  }
+  return { success: false, message: "Server sync failed." };
 }
 
 /**
