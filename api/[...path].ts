@@ -8,7 +8,7 @@ import {
   verifyCoordinatorToken,
   verifyNationalCoordinatorPin,
   verifyStateCoordinatorPin,
-} from "../server/coordinatorAuth";
+} from "../server/coordinatorAuth.js";
 
 const SCRIPT_URL =
   process.env.GOOGLE_APPS_SCRIPT_URL ||

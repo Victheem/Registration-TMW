@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { NIGERIAN_STATES_AND_LGAS } from "../src/data/nigeriaData";
+import { NIGERIAN_STATES_AND_LGAS } from "../src/data/nigeriaData.js";
 
 export type CoordinatorClaims =
   | { role: "national"; exp: number }
