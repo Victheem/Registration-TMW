@@ -509,8 +509,7 @@ export function saveStoredRegistrations(records: RegistrationRecord[]): void {
 
 /**
  * Submits a single registration.
- * Saves to central database first (guaranteeing cross-device synchronization on Device A & Device B),
- * then synchronizes to Google Sheets if connected.
+ * The server queues the record centrally and reports success only after Google Sheets confirms the write.
  */
 export async function submitRegistration(record: RegistrationRecord): Promise<{
   success: boolean;
@@ -520,69 +519,42 @@ export async function submitRegistration(record: RegistrationRecord): Promise<{
   isDevUrl?: boolean;
 }> {
   const existingRecords = getStoredRegistrations();
-  const scriptUrl = getSavedScriptUrl();
-
-  // 1. Submit through central server route first (guarantees cross-device sync and bypasses CORS)
+  let serverRes: Response;
   try {
-    const serverRes = await fetch("/api/submit-registration", {
+    serverRes = await fetch("/api/submit-registration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...record,
-        scriptUrl: scriptUrl || undefined,
       }),
     });
-
-    if (serverRes.ok) {
-      const data = await serverRes.json();
-      const savedRecord = data.record || record;
-
-      // Update local cache with saved record
-      const filtered = existingRecords.filter(r => r.id !== savedRecord.id);
-      saveStoredRegistrations([savedRecord, ...filtered]);
-
-      return {
-        success: true,
-        mode: data.mode === "sheets" ? "sheets" : (data.isUnauthorized ? "unauthorized_401" : "local_queued"),
-        isUnauthorized: data.isUnauthorized,
-        isDevUrl: data.isDevUrl,
-        message: data.message || "Registration saved successfully to Central Database!",
-      };
-    }
   } catch (serverErr) {
-    console.warn("Central server route unavailable, attempting client-side fallback:", serverErr);
+    const queuedRecord = { ...record, status: "local_saved" as const };
+    saveStoredRegistrations([queuedRecord, ...existingRecords]);
+    throw new Error(`Could not reach the registration server. The record is saved only on this device; please retry when online. ${serverErr instanceof Error ? serverErr.message : ""}`.trim());
   }
 
-  // 2. Client-side fallback if server was unreachable
-  if (scriptUrl && !scriptUrl.endsWith("/dev")) {
-    try {
-      await fetch(scriptUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(record),
-      });
-
-      const updated = [{ ...record, status: 'synced' as const }, ...existingRecords];
-      saveStoredRegistrations(updated);
-
-      return {
-        success: true,
-        mode: 'sheets',
-        message: "Registration submitted successfully to Google Sheets!"
-      };
-    } catch {
-      // Fall through to offline queue
-    }
+  const data = await serverRes.json().catch(() => null);
+  if (!serverRes.ok || !data?.success) {
+    const queuedRecord = {
+      ...(data?.record || record),
+      status: "local_saved" as const,
+    };
+    const filtered = existingRecords.filter(r => r.id !== queuedRecord.id);
+    saveStoredRegistrations([queuedRecord, ...filtered]);
+    throw new Error(data?.message || "The registration was not confirmed in Google Sheets. Please check the connection and retry.");
   }
 
-  const updated = [{ ...record, status: 'local_saved' as const }, ...existingRecords];
-  saveStoredRegistrations(updated);
+  const savedRecord = data.record || { ...record, status: "synced" as const };
+  const filtered = existingRecords.filter(r => r.id !== savedRecord.id);
+  saveStoredRegistrations([savedRecord, ...filtered]);
 
   return {
     success: true,
-    mode: 'local_queued',
-    message: "Saved to local offline queue. Will auto-sync when central server is connected!"
+    mode: "sheets",
+    isUnauthorized: data.isUnauthorized,
+    isDevUrl: data.isDevUrl,
+    message: data.message || "Registration submitted and synced live to Google Sheets!",
   };
 }
 
@@ -626,7 +598,7 @@ export async function submitBatchWardSheet(
       accountNumber: row.accountNo,
       signature: row.sign || "Signed",
       timestamp,
-      status: 'synced',
+      status: 'pending',
       isExco,
       excoLevel: isExco ? "Ward" : "None",
       role
@@ -636,9 +608,9 @@ export async function submitBatchWardSheet(
   const existing = getStoredRegistrations();
   saveStoredRegistrations([...mappedRecords, ...existing]);
 
-  // 1. Try server batch endpoint first
+  let serverRes: Response;
   try {
-    const serverRes = await fetch("/api/submit-batch", {
+    serverRes = await fetch("/api/submit-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -646,53 +618,25 @@ export async function submitBatchWardSheet(
         records: mappedRecords,
       }),
     });
-    if (serverRes.ok) {
-      const data = await serverRes.json();
-      return {
-        success: true,
-        count: validRows.length,
-        message: data.message || `Successfully synchronized ${validRows.length} ward members to Google Sheet!`,
-      };
-    }
   } catch (serverErr) {
-    console.warn("Central server batch route failed, attempting direct fetch:", serverErr);
+    const queuedRecords = mappedRecords.map(record => ({ ...record, status: "local_saved" as const }));
+    saveStoredRegistrations([...queuedRecords, ...existing]);
+    throw new Error(`Could not reach the registration server. The batch is saved only on this device; please retry when online. ${serverErr instanceof Error ? serverErr.message : ""}`.trim());
   }
 
-  // 2. Direct client fallback
-  const scriptUrl = getSavedScriptUrl();
-  if (scriptUrl) {
-    try {
-      await fetch(scriptUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          type: "batch_ward_sheet",
-          state: header.state,
-          lga: header.lga,
-          ward: header.ward,
-          records: mappedRecords
-        })
-      });
-
-      return {
-        success: true,
-        count: validRows.length,
-        message: `Successfully synchronized ${validRows.length} ward members to Google Sheet!`
-      };
-    } catch {
-      return {
-        success: true,
-        count: validRows.length,
-        message: `Saved ${validRows.length} members to offline queue. You can sync when connected.`
-      };
-    }
+  const data = await serverRes.json().catch(() => null);
+  if (!serverRes.ok || !data?.success) {
+    const queuedRecords = mappedRecords.map(record => ({ ...record, status: "local_saved" as const }));
+    saveStoredRegistrations([...queuedRecords, ...existing]);
+    throw new Error(data?.message || "The batch was not confirmed in Google Sheets. Please check the connection and retry.");
   }
 
+  const syncedRecords = mappedRecords.map(record => ({ ...record, status: "synced" as const }));
+  saveStoredRegistrations([...syncedRecords, ...existing]);
   return {
     success: true,
     count: validRows.length,
-    message: `Stored ${validRows.length} ward members locally. Configure Google Sheets to sync live!`
+    message: data.message || `Successfully synchronized ${validRows.length} ward members to Google Sheet!`
   };
 }
 
