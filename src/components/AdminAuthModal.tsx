@@ -12,17 +12,30 @@ interface AdminAuthModalProps {
   onUnlock: () => void;
 }
 
-const DEFAULT_PIN = "2027";
+const DEFAULT_PIN = "2005";
 const PIN_STORAGE_KEY = "tmw_admin_pin";
 
 export function getCoordinatorPin(): string {
   if (typeof window === "undefined") return DEFAULT_PIN;
-  return localStorage.getItem(PIN_STORAGE_KEY) || DEFAULT_PIN;
+
+  const savedPin = localStorage.getItem(PIN_STORAGE_KEY);
+  if (savedPin === "2027" || savedPin === "tmw2027") {
+    localStorage.setItem(PIN_STORAGE_KEY, DEFAULT_PIN);
+    return DEFAULT_PIN;
+  }
+
+  if (!savedPin) {
+    localStorage.setItem(PIN_STORAGE_KEY, DEFAULT_PIN);
+    return DEFAULT_PIN;
+  }
+
+  return savedPin;
 }
 
 export function setCoordinatorPin(newPin: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(PIN_STORAGE_KEY, newPin.trim());
+  sessionStorage.removeItem("tmw_admin_mode");
 }
 
 export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({

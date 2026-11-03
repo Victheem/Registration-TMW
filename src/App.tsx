@@ -35,14 +35,7 @@ export default function App() {
   const [scriptUrl, setScriptUrl] = useState<string>("");
 
   // Coordinator Mode (Hidden from public by default)
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("admin") === "true" || window.location.hash === "#admin") {
-      return true;
-    }
-    return sessionStorage.getItem("tmw_admin_mode") === "true";
-  });
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   // Print data state
   const [printData, setPrintData] = useState<{
@@ -178,7 +171,6 @@ export default function App() {
 
   const handleUnlockAdmin = () => {
     setIsAdminMode(true);
-    sessionStorage.setItem("tmw_admin_mode", "true");
   };
 
   const handleExitAdminMode = () => {
