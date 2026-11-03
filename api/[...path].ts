@@ -111,7 +111,7 @@ async function callSheet(payload?: unknown): Promise<Record<string, any>> {
 
 export default async function handler(req: ApiRequest, res: ServerResponse): Promise<void> {
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
-  const endpoint = pathname.replace(/^\/api\/?/, "");
+  const endpoint = pathname.replace(/^\/api\/?/, "").replace(/\/+$/, "");
 
   try {
     if (endpoint === "coordinator/login" && req.method === "POST") {

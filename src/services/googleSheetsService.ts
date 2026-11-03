@@ -491,6 +491,11 @@ async function readApiResponse<T>(response: Response): Promise<T> {
     data = null;
   }
   if (!response.ok) {
+    if (response.status === 404 && !data?.message) {
+      throw new Error(
+        "Coordinator login API was not found. Restart the local server or redeploy the latest app version on Vercel.",
+      );
+    }
     throw new Error(
       data?.message || `Coordinator request failed (HTTP ${response.status}). Check the server configuration and try again.`,
     );

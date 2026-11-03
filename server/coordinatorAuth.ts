@@ -1,4 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { NIGERIAN_STATES_AND_LGAS } from "../src/data/nigeriaData";
 
 export type CoordinatorClaims =
@@ -16,10 +18,15 @@ const canonicalStates = new Map<string, string>(
   NIGERIAN_STATES_AND_LGAS.map(({ state }) => [state.toLowerCase(), state] as const),
 );
 const DEFAULT_STATE_PIN = "0000";
+const DEFAULT_NATIONAL_PIN = "2005";
 const STATE_PIN_KEY_PREFIX = "tmw:state-coordinator-pin:";
+const LOCAL_PIN_FILE = path.resolve(process.cwd(), "data", "state-coordinator-pins.json");
 
 function getTokenSecret(): string {
-  const secret = process.env.COORDINATOR_TOKEN_SECRET?.trim();
+  const secret = process.env.COORDINATOR_TOKEN_SECRET?.trim() ||
+    (process.env.NODE_ENV === "production"
+      ? process.env.KV_REST_API_TOKEN?.trim() || ""
+      : "tmw-local-only-coordinator-secret-change-before-deployment");
   if (!secret || secret.length < 32) {
     throw new CoordinatorConfigError(
       "Set COORDINATOR_TOKEN_SECRET to a random value of at least 32 characters.",
@@ -43,9 +50,10 @@ function hashPin(pin: string, salt: string): Buffer {
   return scryptSync(pin, salt, 64);
 }
 
-function getKvCredentials(): { url: string; token: string } {
+function getKvCredentials(): { url: string; token: string } | null {
   const url = process.env.KV_REST_API_URL?.trim();
   const token = process.env.KV_REST_API_TOKEN?.trim();
+  if (!url && !token && process.env.NODE_ENV !== "production") return null;
   if (!url || !token) {
     throw new CoordinatorConfigError(
       "Connect Vercel KV and configure KV_REST_API_URL and KV_REST_API_TOKEN to enable state coordinator logins.",
@@ -55,7 +63,11 @@ function getKvCredentials(): { url: string; token: string } {
 }
 
 async function runKvCommand<T>(command: string[]): Promise<T> {
-  const { url, token } = getKvCredentials();
+  const credentials = getKvCredentials();
+  if (!credentials) {
+    throw new CoordinatorConfigError("Vercel KV is not configured for this deployment.");
+  }
+  const { url, token } = credentials;
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -73,6 +85,37 @@ async function runKvCommand<T>(command: string[]): Promise<T> {
     );
   }
   return result.result as T;
+}
+
+function readLocalPin(state: string): StoredPin | null {
+  if (!existsSync(LOCAL_PIN_FILE)) return null;
+  const parsed: unknown = JSON.parse(readFileSync(LOCAL_PIN_FILE, "utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new CoordinatorConfigError("The local state PIN store is invalid.");
+  }
+  const record = (parsed as Record<string, unknown>)[state.toLowerCase()];
+  if (!record) return null;
+  if (typeof record !== "object" || record === null) {
+    throw new CoordinatorConfigError(`The stored PIN for ${state} is invalid.`);
+  }
+  const stored = record as Partial<StoredPin>;
+  if (typeof stored.salt !== "string" || typeof stored.hash !== "string") {
+    throw new CoordinatorConfigError(`The stored PIN for ${state} is incomplete.`);
+  }
+  return { salt: stored.salt, hash: stored.hash };
+}
+
+function writeLocalPin(state: string, pin: StoredPin): void {
+  let pins: Record<string, StoredPin> = {};
+  if (existsSync(LOCAL_PIN_FILE)) {
+    const parsed: unknown = JSON.parse(readFileSync(LOCAL_PIN_FILE, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new CoordinatorConfigError("The local state PIN store is invalid.");
+    }
+    pins = parsed as Record<string, StoredPin>;
+  }
+  pins[state.toLowerCase()] = pin;
+  writeFileSync(LOCAL_PIN_FILE, JSON.stringify(pins, null, 2), { encoding: "utf8", mode: 0o600 });
 }
 
 function getStatePins(): Map<string, { state: string; pin: string }> {
@@ -103,10 +146,7 @@ function getStatePins(): Map<string, { state: string; pin: string }> {
 }
 
 export function verifyNationalCoordinatorPin(pin: unknown): boolean {
-  const configured = process.env.NATIONAL_COORDINATOR_PIN;
-  if (!configured) {
-    throw new CoordinatorConfigError("Set NATIONAL_COORDINATOR_PIN on the server.");
-  }
+  const configured = process.env.NATIONAL_COORDINATOR_PIN || DEFAULT_NATIONAL_PIN;
   if (typeof pin !== "string" || !pin) return false;
   return matchesSecret(pin, configured);
 }
@@ -118,17 +158,21 @@ export async function verifyStateCoordinatorPin(
   if (typeof stateName !== "string" || typeof pin !== "string" || !pin) return null;
   const state = canonicalStates.get(stateName.trim().toLowerCase());
   if (!state) return null;
-  const storedValue = await runKvCommand<string | null>([
-    "GET",
-    `${STATE_PIN_KEY_PREFIX}${state.toLowerCase()}`,
-  ]);
+  const kvCredentials = getKvCredentials();
+  const storedValue = kvCredentials
+    ? await runKvCommand<string | null>(["GET", `${STATE_PIN_KEY_PREFIX}${state.toLowerCase()}`])
+    : null;
+  let storedPin: StoredPin | null = null;
   if (storedValue) {
-    let storedPin: StoredPin;
     try {
       storedPin = JSON.parse(storedValue) as StoredPin;
     } catch {
       throw new CoordinatorConfigError(`The stored PIN for ${state} is not valid. Contact the system administrator.`);
     }
+  } else if (!kvCredentials) {
+    storedPin = readLocalPin(state);
+  }
+  if (storedPin) {
     if (typeof storedPin.salt !== "string" || typeof storedPin.hash !== "string") {
       throw new CoordinatorConfigError(`The stored PIN for ${state} is incomplete. Contact the system administrator.`);
     }
@@ -158,11 +202,16 @@ export async function changeStateCoordinatorPin(
   if (!verified) throw new CoordinatorValidationError("The current state PIN is incorrect.");
   const salt = randomBytes(16).toString("hex");
   const hash = hashPin(newPin.trim(), salt).toString("hex");
-  await runKvCommand<string>([
-    "SET",
-    `${STATE_PIN_KEY_PREFIX}${verified.state.toLowerCase()}`,
-    JSON.stringify({ salt, hash } satisfies StoredPin),
-  ]);
+  const storedPin = { salt, hash } satisfies StoredPin;
+  if (getKvCredentials()) {
+    await runKvCommand<string>([
+      "SET",
+      `${STATE_PIN_KEY_PREFIX}${verified.state.toLowerCase()}`,
+      JSON.stringify(storedPin),
+    ]);
+  } else {
+    writeLocalPin(verified.state, storedPin);
+  }
   return createCoordinatorToken({ role: "state", state: verified.state });
 }
 
