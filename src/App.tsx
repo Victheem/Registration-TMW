@@ -4,35 +4,41 @@
  * Renewed Hope. Renewed Nigeria. Brighter Future.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Header } from "./components/Header";
 import { SingleRegistrationForm } from "./components/SingleRegistrationForm";
 import { WardSheetBatchForm } from "./components/WardSheetBatchForm";
 import { SubmissionsTable } from "./components/SubmissionsTable";
 import { RegistrationSlipModal } from "./components/RegistrationSlipModal";
 import { AdminAuthModal } from "./components/AdminAuthModal";
+import { StateCoordinatorAuthModal } from "./components/StateCoordinatorAuthModal";
+import { StateCoordinatorRegistry } from "./components/StateCoordinatorRegistry";
 import { PrintWardSheet } from "./components/PrintWardSheet";
 import { RegistrationRecord, WardSheetHeader, WardSheetRow } from "./types";
 import { 
   getSavedScriptUrl, 
-  getStoredRegistrations, 
-  saveStoredRegistrations,
+  clearSyncedRegistrationCache,
   syncServerConfig,
-  fetchServerRegistrations
+  fetchServerRegistrations,
+  fetchStateCoordinatorRegistrations
 } from "./services/googleSheetsService";
 import { TMWLogo } from "./components/TMWLogo";
-import { 
-  ShieldCheck, 
-  Lock,
-  Unlock
-} from "lucide-react";
+import { Lock } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "print_preview">("individual");
+  const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "state_registry" | "print_preview">("individual");
   const [records, setRecords] = useState<RegistrationRecord[]>([]);
+  const [stateRecords, setStateRecords] = useState<RegistrationRecord[]>([]);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
+  const [isStateAuthOpen, setIsStateAuthOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<RegistrationRecord | null>(null);
   const [scriptUrl, setScriptUrl] = useState<string>("");
+  const [nationalToken, setNationalToken] = useState<string | null>(null);
+  const [stateCoordinator, setStateCoordinator] = useState<{
+    token: string;
+    state: string;
+    mustChangePin: boolean;
+  } | null>(null);
 
   // Coordinator Mode (Hidden from public by default)
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -61,45 +67,58 @@ export default function App() {
 
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isStateRefreshing, setIsStateRefreshing] = useState(false);
 
-  const refreshRecords = async () => {
+  const refreshRecords = useCallback(async () => {
+    if (!isAdminMode || !nationalToken) return;
     setIsRefreshing(true);
     try {
-      const updated = await fetchServerRegistrations();
-      if (Array.isArray(updated)) {
-        setRecords(updated);
-        setLastSyncTime(new Date());
-      }
+      const updated = await fetchServerRegistrations(nationalToken);
+      setRecords(updated);
+      setLastSyncTime(new Date());
     } catch (err) {
       console.warn("Error refreshing server records:", err);
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [isAdminMode, nationalToken]);
 
-  // Continuous multi-device synchronization
+  const refreshStateRecords = useCallback(async () => {
+    if (!stateCoordinator || stateCoordinator.mustChangePin) return;
+    setIsStateRefreshing(true);
+    try {
+      const updated = await fetchStateCoordinatorRegistrations(stateCoordinator.token);
+      setStateRecords(updated);
+    } catch (err) {
+      console.warn("Error refreshing state coordinator records:", err);
+      setStateRecords([]);
+    } finally {
+      setIsStateRefreshing(false);
+    }
+  }, [stateCoordinator]);
+
+  // Load shared configuration without fetching registration data in public mode.
   useEffect(() => {
-    // 1. Initial load
+    clearSyncedRegistrationCache();
     const loadedUrl = getSavedScriptUrl();
     if (loadedUrl) setScriptUrl(loadedUrl);
-    setRecords(getStoredRegistrations());
 
-    // Load the shared server-side sheet configuration.
     syncServerConfig().then((syncedUrl) => {
       if (syncedUrl) {
         setScriptUrl(syncedUrl);
       }
     });
+  }, []);
 
-    // 3. Initial fetch from central server
+  useEffect(() => {
+    if (!isAdminMode || !nationalToken) {
+      setRecords([]);
+      return;
+    }
     refreshRecords();
-
-    // 4. Live polling every 3.5 seconds across all devices (Device A, Device B, mobile phones)
     const interval = setInterval(() => {
       refreshRecords();
     }, 3500);
-
-    // 5. Instant refresh whenever device window/tab gains focus
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
         refreshRecords();
@@ -114,21 +133,32 @@ export default function App() {
       window.removeEventListener("focus", handleVisibility);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [isAdminMode, nationalToken, refreshRecords]);
 
-  // When coordinator switches to Registry tab, trigger immediate live fetch
   useEffect(() => {
-    if (activeTab === "registry") {
+    if (activeTab === "registry" && isAdminMode) {
       refreshRecords();
     }
-  }, [activeTab]);
+  }, [activeTab, isAdminMode, refreshRecords]);
 
-  // Redirect to individual tab if registry tab is requested while in public view
   useEffect(() => {
     if (activeTab === "registry" && !isAdminMode) {
       setActiveTab("individual");
     }
-  }, [activeTab, isAdminMode]);
+    if (activeTab === "state_registry" && !stateCoordinator) {
+      setActiveTab("individual");
+    }
+  }, [activeTab, isAdminMode, stateCoordinator]);
+
+  useEffect(() => {
+    if (!stateCoordinator) {
+      setStateRecords([]);
+      return;
+    }
+    refreshStateRecords();
+    const interval = setInterval(refreshStateRecords, 3500);
+    return () => clearInterval(interval);
+  }, [stateCoordinator, refreshStateRecords]);
 
   const handleSingleSuccess = (record: RegistrationRecord) => {
     refreshRecords();
@@ -140,27 +170,34 @@ export default function App() {
   };
 
   const handleDeleteRecord = async (id: string) => {
+    if (!nationalToken) return;
     if (confirm("Delete this registration record?")) {
       try {
-        await fetch(`/api/registrations/${id}`, { method: "DELETE" });
+        const response = await fetch(`/api/registrations/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${nationalToken}` },
+        });
+        if (!response.ok) throw new Error("The registration could not be deleted.");
+        await refreshRecords();
       } catch (err) {
-        console.warn("Could not delete from server:", err);
+        alert(err instanceof Error ? err.message : "The registration could not be deleted.");
       }
-      const updated = records.filter(r => r.id !== id);
-      saveStoredRegistrations(updated);
-      setRecords(updated);
     }
   };
 
   const handleClearAll = async () => {
-    if (confirm("Are you sure you want to clear all registrations stored on this device? Ensure you have exported CSV or synced to Google Sheets first.")) {
+    if (!nationalToken) return;
+    if (confirm("Are you sure you want to clear all registrations stored on this server? Ensure you have exported CSV or synced to Google Sheets first.")) {
       try {
-        await fetch("/api/registrations", { method: "DELETE" });
+        const response = await fetch("/api/registrations", {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${nationalToken}` },
+        });
+        if (!response.ok) throw new Error("The registrations could not be cleared.");
+        setRecords([]);
       } catch (err) {
-        console.warn("Could not clear on server:", err);
+        alert(err instanceof Error ? err.message : "The registrations could not be cleared.");
       }
-      saveStoredRegistrations([]);
-      setRecords([]);
     }
   };
 
@@ -169,22 +206,45 @@ export default function App() {
     setActiveTab("print_preview");
   };
 
-  const handleUnlockAdmin = () => {
+  const handleUnlockAdmin = (token: string) => {
+    setStateCoordinator(null);
+    setStateRecords([]);
+    setNationalToken(token);
     setIsAdminMode(true);
   };
 
   const handleExitAdminMode = () => {
     setIsAdminMode(false);
-    sessionStorage.removeItem("tmw_admin_mode");
+    setNationalToken(null);
+    setRecords([]);
     if (activeTab === "registry") {
       setActiveTab("individual");
     }
+  };
+
+  const handleUnlockStateCoordinator = (session: {
+    token: string;
+    state: string;
+    mustChangePin: boolean;
+  }) => {
+    setNationalToken(null);
+    setIsAdminMode(false);
+    setRecords([]);
+    setStateCoordinator(session);
+    setActiveTab("state_registry");
+  };
+
+  const handleExitStateCoordinator = () => {
+    setStateCoordinator(null);
+    setStateRecords([]);
+    if (activeTab === "state_registry") setActiveTab("individual");
   };
 
   const pageCopy = {
     individual: { eyebrow: "MEMBER INTAKE", title: "Electoral Ward Registration", detail: "National grassroots member directory" },
     ward_sheet: { eyebrow: "COORDINATOR WORKSPACE", title: "Ward Sheet Intake", detail: "Register members in batches of 20" },
     registry: { eyebrow: "RECORDS & FOLLOW-UP", title: "Electoral Ward Registry", detail: "Review, export, and sync saved records" },
+    state_registry: { eyebrow: "STATE COORDINATION", title: "State Registration List", detail: "View registrations assigned to your state" },
     print_preview: { eyebrow: "DOCUMENT OUTPUT", title: "Official Ward Sheet", detail: "Review the print layout before exporting" },
   }[activeTab];
 
@@ -194,9 +254,13 @@ export default function App() {
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        totalRegistered={records.length}
+        totalRegistered={isAdminMode ? records.length : stateRecords.length}
         isAdminMode={isAdminMode}
         onExitAdminMode={handleExitAdminMode}
+        isStateCoordinator={Boolean(stateCoordinator)}
+        stateCoordinatorState={stateCoordinator?.state}
+        onExitStateCoordinator={handleExitStateCoordinator}
+        onOpenStateCoordinatorLogin={() => setIsStateAuthOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -236,8 +300,23 @@ export default function App() {
             onDeleteRecord={handleDeleteRecord}
             onClearAll={handleClearAll}
             scriptUrl={scriptUrl}
+            authToken={nationalToken || undefined}
             lastSyncTime={lastSyncTime}
             isRefreshing={isRefreshing}
+          />
+        )}
+
+        {activeTab === "state_registry" && stateCoordinator && (
+          <StateCoordinatorRegistry
+            state={stateCoordinator.state}
+            token={stateCoordinator.token}
+            mustChangePin={stateCoordinator.mustChangePin}
+            records={stateRecords}
+            onRefresh={refreshStateRecords}
+            isRefreshing={isStateRefreshing}
+            onPinChanged={(token) => setStateCoordinator((current) =>
+              current ? { ...current, token, mustChangePin: false } : current,
+            )}
           />
         )}
 
@@ -267,6 +346,11 @@ export default function App() {
         isOpen={isAdminAuthOpen}
         onClose={() => setIsAdminAuthOpen(false)}
         onUnlock={handleUnlockAdmin}
+      />
+      <StateCoordinatorAuthModal
+        isOpen={isStateAuthOpen}
+        onClose={() => setIsStateAuthOpen(false)}
+        onUnlock={handleUnlockStateCoordinator}
       />
 
       {/* Official Footer with the Coordination Helpline */}

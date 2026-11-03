@@ -1,9 +1,22 @@
+import "dotenv/config";
 import express from "express";
+import type { Request, Response } from "express";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import {
+  CoordinatorConfigError,
+  CoordinatorValidationError,
+  changeStateCoordinatorPin,
+  createCoordinatorToken,
+  getBearerToken,
+  verifyCoordinatorToken,
+  verifyNationalCoordinatorPin,
+  verifyStateCoordinatorPin,
+  type CoordinatorClaims,
+} from "./server/coordinatorAuth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +88,30 @@ function saveRegistrations(records: any[]): void {
     fs.writeFileSync(REGISTRATIONS_FILE, JSON.stringify(records, null, 2), "utf-8");
   } catch (err) {
     console.error("Error saving registrations:", err);
+  }
+}
+
+function requireCoordinator(
+  req: Request,
+  res: Response,
+  role: CoordinatorClaims["role"],
+): CoordinatorClaims | null {
+  try {
+    const claims = verifyCoordinatorToken(getBearerToken(req.header("authorization")));
+    if (claims?.role !== role) {
+      res.status(401).json({
+        success: false,
+        message: role === "national"
+          ? "National coordinator login is required."
+          : "State coordinator login is required.",
+      });
+      return null;
+    }
+    return claims;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Coordinator authentication is unavailable.";
+    res.status(error instanceof CoordinatorConfigError ? 503 : 500).json({ success: false, message });
+    return null;
   }
 }
 
@@ -570,6 +607,38 @@ async function fetchRecordsFromGoogleSheets(scriptUrl: string): Promise<FetchShe
   };
 }
 
+async function getRegistryRecords(): Promise<{ records: any[]; isCloud: boolean }> {
+  const config = loadConfig();
+  refreshRegistrationsFromGoogleSheet(config.scriptUrl || "");
+  const localRecords = loadRegistrations();
+  const supabase = getSupabaseClient();
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("tmw_registrations")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        const cloudRecords = data.map(supabaseRowToRecord);
+        const idMap = new Map<string, any>();
+        cloudRecords.forEach((record) => idMap.set(record.id, record));
+        localRecords.forEach((record) => {
+          if (!idMap.has(record.id)) idMap.set(record.id, record);
+        });
+        const merged = Array.from(idMap.values());
+        saveRegistrations(merged);
+        return { records: merged, isCloud: true };
+      }
+    } catch (error) {
+      console.warn("Could not query Supabase in the coordinator registry:", error);
+    }
+  }
+
+  return { records: localRecords, isCloud: false };
+}
+
 async function startServer() {
   const app = express();
 
@@ -577,6 +646,66 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
   // API Routes
+  app.post("/api/coordinator/login", (req, res) => {
+    try {
+      if (!verifyNationalCoordinatorPin(req.body?.pin)) {
+        res.status(401).json({ success: false, message: "Incorrect national coordinator PIN." });
+        return;
+      }
+      res.json({
+        success: true,
+        token: createCoordinatorToken({ role: "national" }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Coordinator login is unavailable.";
+      res.status(error instanceof CoordinatorConfigError ? 503 : 500).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/state-coordinator/login", async (req, res) => {
+    try {
+      const session = await verifyStateCoordinatorPin(req.body?.state, req.body?.pin);
+      if (!session) {
+        res.status(401).json({ success: false, message: "The selected state or PIN is incorrect." });
+        return;
+      }
+      res.json({
+        success: true,
+        state: session.state,
+        mustChangePin: session.mustChangePin,
+        token: createCoordinatorToken({
+          role: "state",
+          state: session.state,
+          ...(session.mustChangePin ? { mustChangePin: true } : {}),
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "State coordinator login is unavailable.";
+      res.status(error instanceof CoordinatorConfigError ? 503 : 500).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/state-coordinator/change-pin", async (req, res) => {
+    const claims = requireCoordinator(req, res, "state");
+    if (!claims || claims.role !== "state") return;
+    try {
+      const token = await changeStateCoordinatorPin(
+        claims.state,
+        req.body?.currentPin,
+        req.body?.newPin,
+      );
+      res.json({ success: true, token, message: "Your state PIN has been changed." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not change the state PIN.";
+      const status = error instanceof CoordinatorConfigError
+        ? 503
+        : error instanceof CoordinatorValidationError
+          ? 400
+          : 500;
+      res.status(status).json({ success: false, message });
+    }
+  });
+
   app.get("/api/config", (req, res) => {
     const config = loadConfig();
     res.json({
@@ -786,50 +915,50 @@ async function startServer() {
   });
 
   app.get("/api/registrations", async (req, res) => {
-    const config = loadConfig();
-    refreshRegistrationsFromGoogleSheet(config.scriptUrl || "");
-    const localRecords = loadRegistrations();
-    const supabase = getSupabaseClient();
-
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("tmw_registrations")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (!error && Array.isArray(data)) {
-          const cloudRecords = data.map(supabaseRowToRecord);
-          // Merge cloud records with local cache
-          const idMap = new Map<string, any>();
-          cloudRecords.forEach((r) => idMap.set(r.id, r));
-          localRecords.forEach((r) => {
-            if (!idMap.has(r.id)) {
-              idMap.set(r.id, r);
-            }
-          });
-          const merged = Array.from(idMap.values());
-          saveRegistrations(merged);
-          return res.json({
-            success: true,
-            records: merged,
-            count: merged.length,
-            isCloud: true,
-            serverTime: new Date().toISOString()
-          });
-        }
-      } catch (err) {
-        console.warn("Could not query Supabase in /api/registrations:", err);
-      }
+    const claims = requireCoordinator(req, res, "national");
+    if (!claims) return;
+    try {
+      const { records, isCloud } = await getRegistryRecords();
+      res.json({
+        success: true,
+        records,
+        count: records.length,
+        isCloud,
+        serverTime: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load the registration registry.";
+      res.status(502).json({ success: false, message });
     }
+  });
 
-    res.json({
-      success: true,
-      records: localRecords,
-      count: localRecords.length,
-      isCloud: false,
-      serverTime: new Date().toISOString()
-    });
+  app.get("/api/state-coordinator/registrations", async (req, res) => {
+    const claims = requireCoordinator(req, res, "state");
+    if (!claims || claims.role !== "state") return;
+    if (claims.mustChangePin) {
+      res.status(403).json({
+        success: false,
+        message: "Change the default state PIN before viewing registrations.",
+      });
+      return;
+    }
+    try {
+      const { records, isCloud } = await getRegistryRecords();
+      const stateRecords = records.filter((record) =>
+        String(record.state || "").trim().toLowerCase() === claims.state.toLowerCase(),
+      );
+      res.json({
+        success: true,
+        state: claims.state,
+        records: stateRecords,
+        count: stateRecords.length,
+        isCloud,
+        serverTime: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load the state registration list.";
+      res.status(502).json({ success: false, message });
+    }
   });
 
   app.post("/api/submit-registration", async (req, res) => {
@@ -1201,6 +1330,8 @@ async function startServer() {
 
   // Fetch and import all records directly from Google Sheets into the registry
   app.post("/api/fetch-from-sheets", async (req, res) => {
+    const claims = requireCoordinator(req, res, "national");
+    if (!claims) return;
     try {
       const config = loadConfig();
       const targetScriptUrl = (req.body?.scriptUrl || config.scriptUrl || "").trim();
@@ -1296,6 +1427,8 @@ async function startServer() {
   });
 
   app.delete("/api/registrations/:id", async (req, res) => {
+    const claims = requireCoordinator(req, res, "national");
+    if (!claims) return;
     const { id } = req.params;
     const existing = loadRegistrations();
     const updated = existing.filter((r) => r.id !== id);
@@ -1314,6 +1447,8 @@ async function startServer() {
   });
 
   app.delete("/api/registrations", async (req, res) => {
+    const claims = requireCoordinator(req, res, "national");
+    if (!claims) return;
     saveRegistrations([]);
     const supabase = getSupabaseClient();
     if (supabase) {

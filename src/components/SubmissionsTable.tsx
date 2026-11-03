@@ -35,6 +35,7 @@ interface SubmissionsTableProps {
   onDeleteRecord: (id: string) => void;
   onClearAll: () => void;
   scriptUrl?: string;
+  authToken?: string;
   lastSyncTime?: Date;
   isRefreshing?: boolean;
 }
@@ -46,6 +47,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   onDeleteRecord,
   onClearAll,
   scriptUrl = "",
+  authToken,
   lastSyncTime,
   isRefreshing = false,
 }) => {
@@ -86,7 +88,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
     setIsFetchingFromSheets(true);
     setSyncFeedback(null);
 
-    const res = await fetchFromGoogleSheets(scriptUrl || undefined);
+    const res = await fetchFromGoogleSheets(scriptUrl || undefined, authToken);
     setIsFetchingFromSheets(false);
     onRefresh();
 

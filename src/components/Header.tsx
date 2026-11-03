@@ -10,15 +10,22 @@ import {
   Printer, 
   Database,
   ShieldCheck,
-  Lock
+  Lock,
+  UsersRound
 } from "lucide-react";
 
+type HeaderTab = "individual" | "ward_sheet" | "registry" | "state_registry" | "print_preview";
+
 interface HeaderProps {
-  activeTab: "individual" | "ward_sheet" | "registry" | "print_preview";
-  setActiveTab: (tab: "individual" | "ward_sheet" | "registry" | "print_preview") => void;
+  activeTab: HeaderTab;
+  setActiveTab: (tab: HeaderTab) => void;
   totalRegistered: number;
   isAdminMode?: boolean;
   onExitAdminMode?: () => void;
+  isStateCoordinator?: boolean;
+  stateCoordinatorState?: string;
+  onExitStateCoordinator?: () => void;
+  onOpenStateCoordinatorLogin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,6 +34,10 @@ export const Header: React.FC<HeaderProps> = ({
   totalRegistered,
   isAdminMode = false,
   onExitAdminMode,
+  isStateCoordinator = false,
+  stateCoordinatorState,
+  onExitStateCoordinator,
+  onOpenStateCoordinatorLogin,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs print:hidden">
@@ -52,6 +63,23 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={onExitAdminMode}
                   className="text-[11px] text-emerald-100 hover:text-white underline font-semibold transition-colors flex items-center gap-1"
                   title="Lock admin controls and return to public view"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Exit</span>
+                </button>
+              )}
+            </div>
+          )}
+          {isStateCoordinator && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded border border-emerald-700">
+                {stateCoordinatorState} Coordinator
+              </span>
+              {onExitStateCoordinator && (
+                <button
+                  type="button"
+                  onClick={onExitStateCoordinator}
+                  className="text-[11px] text-emerald-100 hover:text-white underline font-semibold transition-colors flex items-center gap-1"
                 >
                   <Lock className="w-3 h-3" />
                   <span>Exit</span>
@@ -94,12 +122,19 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Coordinator Mode</span>
               </div>
             )}
+            {isStateCoordinator && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                <span>{stateCoordinatorState} State Coordinator</span>
+              </div>
+            )}
 
-            {/* Total registrations badge */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 rounded-lg">
-              <Database className="w-3.5 h-3.5 text-slate-500" />
-              <span>Registered: <strong className="tabular-nums font-bold text-slate-900">{totalRegistered}</strong></span>
-            </div>
+            {(isAdminMode || isStateCoordinator) && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 rounded-lg">
+                <Database className="w-3.5 h-3.5 text-slate-500" />
+                <span>Registered: <strong className="tabular-nums font-bold text-slate-900">{totalRegistered}</strong></span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -147,6 +182,30 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Database className="w-4 h-4" />
                 <span>Registry Database ({totalRegistered})</span>
+              </button>
+            )}
+
+            {isStateCoordinator ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab("state_registry")}
+                className={`flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
+                  activeTab === "state_registry"
+                    ? "bg-[#0D5C3A] text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }`}
+              >
+                <UsersRound className="w-4 h-4" />
+                <span>{stateCoordinatorState} Registry</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenStateCoordinatorLogin}
+                className="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-md text-slate-600 transition-all whitespace-nowrap hover:bg-slate-100 hover:text-slate-900"
+              >
+                <UsersRound className="w-4 h-4" />
+                <span>State Coordinators</span>
               </button>
             )}
           </div>

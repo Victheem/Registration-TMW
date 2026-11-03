@@ -1,4 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  CoordinatorConfigError,
+  CoordinatorValidationError,
+  changeStateCoordinatorPin,
+  createCoordinatorToken,
+  getBearerToken,
+  verifyCoordinatorToken,
+  verifyNationalCoordinatorPin,
+  verifyStateCoordinatorPin,
+} from "../server/coordinatorAuth";
 
 const SCRIPT_URL =
   process.env.GOOGLE_APPS_SCRIPT_URL ||
@@ -104,6 +114,51 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
   const endpoint = pathname.replace(/^\/api\/?/, "");
 
   try {
+    if (endpoint === "coordinator/login" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!verifyNationalCoordinatorPin(body.pin)) {
+        sendJson(res, 401, { success: false, message: "Incorrect national coordinator PIN." });
+        return;
+      }
+      sendJson(res, 200, {
+        success: true,
+        token: createCoordinatorToken({ role: "national" }),
+      });
+      return;
+    }
+
+    if (endpoint === "state-coordinator/login" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const session = await verifyStateCoordinatorPin(body.state, body.pin);
+      if (!session) {
+        sendJson(res, 401, { success: false, message: "The selected state or PIN is incorrect." });
+        return;
+      }
+      sendJson(res, 200, {
+        success: true,
+        state: session.state,
+        mustChangePin: session.mustChangePin,
+        token: createCoordinatorToken({
+          role: "state",
+          state: session.state,
+          ...(session.mustChangePin ? { mustChangePin: true } : {}),
+        }),
+      });
+      return;
+    }
+
+    if (endpoint === "state-coordinator/change-pin" && req.method === "POST") {
+      const claims = verifyCoordinatorToken(getBearerToken(req.headers.authorization));
+      if (claims?.role !== "state") {
+        sendJson(res, 401, { success: false, message: "State coordinator login is required." });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const token = await changeStateCoordinatorPin(claims.state, body.currentPin, body.newPin);
+      sendJson(res, 200, { success: true, token, message: "Your state PIN has been changed." });
+      return;
+    }
+
     if (endpoint === "config" && req.method === "GET") {
       sendJson(res, 200, {
         success: true,
@@ -128,8 +183,38 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
     }
 
     if (endpoint === "registrations" && req.method === "GET") {
+      const claims = verifyCoordinatorToken(getBearerToken(req.headers.authorization));
+      if (claims?.role !== "national") {
+        sendJson(res, 401, { success: false, message: "National coordinator login is required." });
+        return;
+      }
       const records = await getSheetRecords();
       sendJson(res, 200, { success: true, records, count: records.length, isCloud: true });
+      return;
+    }
+
+    if (endpoint === "state-coordinator/registrations" && req.method === "GET") {
+      const claims = verifyCoordinatorToken(getBearerToken(req.headers.authorization));
+      if (claims?.role !== "state") {
+        sendJson(res, 401, { success: false, message: "State coordinator login is required." });
+        return;
+      }
+      if (claims.mustChangePin) {
+        sendJson(res, 403, { success: false, message: "Change the default state PIN before viewing registrations." });
+        return;
+      }
+      const records = await getSheetRecords();
+      const stateRecords = records.filter((record) =>
+        record && typeof record === "object" &&
+        typeof (record as Record<string, unknown>).state === "string" &&
+        ((record as Record<string, unknown>).state as string).trim().toLowerCase() === claims.state.toLowerCase(),
+      );
+      sendJson(res, 200, {
+        success: true,
+        state: claims.state,
+        records: stateRecords,
+        count: stateRecords.length,
+      });
       return;
     }
 
@@ -176,6 +261,11 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
     }
 
     if (endpoint === "fetch-from-sheets" && req.method === "POST") {
+      const claims = verifyCoordinatorToken(getBearerToken(req.headers.authorization));
+      if (claims?.role !== "national") {
+        sendJson(res, 401, { success: false, message: "National coordinator login is required." });
+        return;
+      }
       const records = await getSheetRecords(true);
       sendJson(res, 200, {
         success: true,
@@ -191,6 +281,11 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
   } catch (error) {
     const message = error instanceof Error ? error.message : "The Google Sheets request failed.";
     console.error(`Vercel API error (${endpoint}):`, message);
-    sendJson(res, 502, { success: false, message });
+    const status = error instanceof CoordinatorConfigError
+      ? 503
+      : error instanceof CoordinatorValidationError
+        ? 400
+        : 502;
+    sendJson(res, status, { success: false, message });
   }
 }

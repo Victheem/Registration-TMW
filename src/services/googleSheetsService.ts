@@ -474,27 +474,89 @@ export function getStoredRegistrations(): RegistrationRecord[] {
   }
 }
 
+export function clearSyncedRegistrationCache(): void {
+  const unsyncedRecords = getStoredRegistrations().filter((record) => record.status !== "synced");
+  saveStoredRegistrations(unsyncedRecords);
+}
+
 /**
  * Fetches registrations from the central server (aggregates all phones & machines)
  */
-export async function fetchServerRegistrations(): Promise<RegistrationRecord[]> {
+async function readApiResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  let data: { message?: string } | null = null;
   try {
-    const res = await fetch("/api/registrations", {
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && Array.isArray(data.records)) {
-        const serverRecords: RegistrationRecord[] = data.records;
-        saveStoredRegistrations(serverRecords);
-        return serverRecords;
-      }
-    }
-  } catch (err) {
-    console.warn("Could not reach central server, loading local cache:", err);
+    data = text ? JSON.parse(text) as { message?: string } : null;
+  } catch {
+    data = null;
   }
-  return getStoredRegistrations();
+  if (!response.ok) {
+    throw new Error(
+      data?.message || `Coordinator request failed (HTTP ${response.status}). Check the server configuration and try again.`,
+    );
+  }
+  if (!data) throw new Error("The coordinator server returned an invalid response.");
+  return data as T;
+}
+
+export async function loginNationalCoordinator(pin: string): Promise<string> {
+  const response = await fetch("/api/coordinator/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin }),
+  });
+  const data = await readApiResponse<{ token: string }>(response);
+  return data.token;
+}
+
+export async function loginStateCoordinator(
+  state: string,
+  pin: string,
+): Promise<{ token: string; state: string; mustChangePin: boolean }> {
+  const response = await fetch("/api/state-coordinator/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state, pin }),
+  });
+  return readApiResponse<{ token: string; state: string; mustChangePin: boolean }>(response);
+}
+
+export async function changeStateCoordinatorPin(
+  token: string,
+  currentPin: string,
+  newPin: string,
+): Promise<{ token: string; message: string }> {
+  const response = await fetch("/api/state-coordinator/change-pin", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ currentPin, newPin }),
+  });
+  return readApiResponse<{ token: string; message: string }>(response);
+}
+
+export async function fetchServerRegistrations(token: string): Promise<RegistrationRecord[]> {
+  const response = await fetch("/api/registrations", {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}`, "Cache-Control": "no-cache" },
+  });
+  const data = await readApiResponse<{ records: RegistrationRecord[] }>(response);
+  if (!Array.isArray(data.records)) throw new Error("The registry response was invalid.");
+  return data.records;
+}
+
+export async function fetchStateCoordinatorRegistrations(
+  token: string,
+): Promise<RegistrationRecord[]> {
+  const response = await fetch("/api/state-coordinator/registrations", {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}`, "Cache-Control": "no-cache" },
+  });
+  const data = await readApiResponse<{ records: RegistrationRecord[] }>(response);
+  if (!Array.isArray(data.records)) throw new Error("The state registry response was invalid.");
+  return data.records;
 }
 
 /**
@@ -530,7 +592,10 @@ export async function submitRegistration(record: RegistrationRecord): Promise<{
     });
   } catch (serverErr) {
     const queuedRecord = { ...record, status: "local_saved" as const };
-    saveStoredRegistrations([queuedRecord, ...existingRecords]);
+    saveStoredRegistrations([
+      queuedRecord,
+      ...existingRecords.filter((existing) => existing.status !== "synced"),
+    ]);
     throw new Error(`Could not reach the registration server. The record is saved only on this device; please retry when online. ${serverErr instanceof Error ? serverErr.message : ""}`.trim());
   }
 
@@ -540,14 +605,17 @@ export async function submitRegistration(record: RegistrationRecord): Promise<{
       ...(data?.record || record),
       status: "local_saved" as const,
     };
-    const filtered = existingRecords.filter(r => r.id !== queuedRecord.id);
+    const filtered = existingRecords.filter((existing) =>
+      existing.status !== "synced" && existing.id !== queuedRecord.id,
+    );
     saveStoredRegistrations([queuedRecord, ...filtered]);
     throw new Error(data?.message || "The registration was not confirmed in Google Sheets. Please check the connection and retry.");
   }
 
   const savedRecord = data.record || { ...record, status: "synced" as const };
-  const filtered = existingRecords.filter(r => r.id !== savedRecord.id);
-  saveStoredRegistrations([savedRecord, ...filtered]);
+  saveStoredRegistrations(existingRecords.filter((existing) =>
+    existing.status !== "synced" && existing.id !== savedRecord.id,
+  ));
 
   return {
     success: true,
@@ -620,19 +688,18 @@ export async function submitBatchWardSheet(
     });
   } catch (serverErr) {
     const queuedRecords = mappedRecords.map(record => ({ ...record, status: "local_saved" as const }));
-    saveStoredRegistrations([...queuedRecords, ...existing]);
+    saveStoredRegistrations([...queuedRecords, ...existing.filter((record) => record.status !== "synced")]);
     throw new Error(`Could not reach the registration server. The batch is saved only on this device; please retry when online. ${serverErr instanceof Error ? serverErr.message : ""}`.trim());
   }
 
   const data = await serverRes.json().catch(() => null);
   if (!serverRes.ok || !data?.success) {
     const queuedRecords = mappedRecords.map(record => ({ ...record, status: "local_saved" as const }));
-    saveStoredRegistrations([...queuedRecords, ...existing]);
+    saveStoredRegistrations([...queuedRecords, ...existing.filter((record) => record.status !== "synced")]);
     throw new Error(data?.message || "The batch was not confirmed in Google Sheets. Please check the connection and retry.");
   }
 
-  const syncedRecords = mappedRecords.map(record => ({ ...record, status: "synced" as const }));
-  saveStoredRegistrations([...syncedRecords, ...existing]);
+  saveStoredRegistrations(existing.filter((record) => record.status !== "synced"));
   return {
     success: true,
     count: validRows.length,
@@ -801,7 +868,7 @@ export async function pushAllToGoogleSheets(): Promise<{
 /**
  * Fetches all registered members directly from Google Sheets and merges them with the central registry
  */
-export async function fetchFromGoogleSheets(optionalUrl?: string): Promise<{
+export async function fetchFromGoogleSheets(optionalUrl?: string, authToken?: string): Promise<{
   success: boolean;
   count?: number;
   totalInRegistry?: number;
@@ -813,15 +880,14 @@ export async function fetchFromGoogleSheets(optionalUrl?: string): Promise<{
     const targetScriptUrl = (optionalUrl || getSavedScriptUrl() || "").trim();
     const res = await fetch("/api/fetch-from-sheets", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({ scriptUrl: targetScriptUrl })
     });
     if (res.ok) {
-      const data = await res.json();
-      if (data.records && Array.isArray(data.records)) {
-        saveStoredRegistrations(data.records);
-      }
-      return data;
+      return await res.json();
     }
     const errData = await res.json().catch(() => null);
     return {
