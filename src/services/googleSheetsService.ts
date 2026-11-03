@@ -706,7 +706,21 @@ export async function testConnection(url: string): Promise<{
   isDevUrl?: boolean;
   verifiedUrl?: string;
 }> {
-  if (!url || !url.startsWith("https://script.google.com/macros/s/")) {
+  if (!url) {
+    return {
+      ok: false,
+      message: "Please enter your Google Apps Script Web App URL."
+    };
+  }
+
+  if (url.includes("docs.google.com/spreadsheets/d/")) {
+    return {
+      ok: false,
+      message: "Notice: You entered a Google Spreadsheet link. To enable automatic live sync, open that sheet > Extensions > Apps Script, paste the provided Code.gs, deploy as a Web app ('Who has access: Anyone'), and paste the Web App URL (starts with https://script.google.com/macros/s/...) here."
+    };
+  }
+
+  if (!url.startsWith("https://script.google.com/macros/s/")) {
     return {
       ok: false,
       message: "Please enter a valid Google Apps Script Web App URL starting with https://script.google.com/macros/s/..."
@@ -843,7 +857,7 @@ export async function pushAllToGoogleSheets(): Promise<{
 /**
  * Fetches all registered members directly from Google Sheets and merges them with the central registry
  */
-export async function fetchFromGoogleSheets(): Promise<{
+export async function fetchFromGoogleSheets(optionalUrl?: string): Promise<{
   success: boolean;
   count?: number;
   totalInRegistry?: number;
@@ -852,7 +866,12 @@ export async function fetchFromGoogleSheets(): Promise<{
   isUnauthorized?: boolean;
 }> {
   try {
-    const res = await fetch("/api/fetch-from-sheets", { method: "POST" });
+    const targetScriptUrl = (optionalUrl || getSavedScriptUrl() || "").trim();
+    const res = await fetch("/api/fetch-from-sheets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scriptUrl: targetScriptUrl })
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.records && Array.isArray(data.records)) {

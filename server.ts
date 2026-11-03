@@ -237,12 +237,175 @@ interface FetchSheetResult {
   isUnauthorized?: boolean;
 }
 
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseGoogleSheetCsv(csvText: string): any[] {
+  const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length <= 1) return [];
+
+  const rawHeaders = parseCsvLine(lines[0]);
+  const headers = rawHeaders.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  
+  const findIdx = (keywords: string[]) => {
+    return headers.findIndex(h => keywords.some(k => h.includes(k)));
+  };
+
+  const nameIdx = findIdx(["fullname", "membername", "name", "names"]);
+  const phoneIdx = findIdx(["phone", "phonenumber", "telephone", "mobile"]);
+  const refIdx = findIdx(["referenceid", "refid", "sn", "serialnumber"]);
+  const stateIdx = findIdx(["state"]);
+  const lgaIdx = findIdx(["lga", "localgovt", "localgovernment"]);
+  const wardIdx = findIdx(["ward", "electoralward"]);
+  const isExcoIdx = findIdx(["exco", "membership", "classification"]);
+  const levelIdx = findIdx(["level", "excolevel"]);
+  const roleIdx = findIdx(["role", "designation", "position"]);
+  const vinIdx = findIdx(["vin", "votercard"]);
+  const puIdx = findIdx(["polling", "unit", "pu"]);
+  const bankIdx = findIdx(["bank", "bankname"]);
+  const acctIdx = findIdx(["account", "accountnumber", "accountno"]);
+  const signIdx = findIdx(["signature", "sign"]);
+  const dateIdx = findIdx(["timestamp", "date", "time"]);
+
+  const records: any[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    const rawName = (nameIdx >= 0 ? cols[nameIdx] : cols[5]) || "";
+    const rawPhone = (phoneIdx >= 0 ? cols[phoneIdx] : cols[9]) || "";
+    const rawRef = (refIdx >= 0 ? cols[refIdx] : cols[1]) || "";
+
+    const fullName = rawName.replace(/^'/, "").trim();
+    const phone = rawPhone.replace(/^'/, "").trim();
+    const refId = rawRef.replace(/^'/, "").trim();
+
+    // Skip empty or blank lines
+    if (!fullName && !phone && !refId) continue;
+
+    const state = (stateIdx >= 0 ? cols[stateIdx] : cols[2]) || "";
+    const lga = (lgaIdx >= 0 ? cols[lgaIdx] : cols[3]) || "";
+    const ward = (wardIdx >= 0 ? cols[wardIdx] : cols[4]) || "";
+    const classification = (isExcoIdx >= 0 ? cols[isExcoIdx] : cols[6]) || "";
+    const isExco = classification.toUpperCase().includes("EXCO") && !classification.toUpperCase().includes("NON");
+    const excoLevel = (levelIdx >= 0 ? cols[levelIdx] : cols[7]) || (isExco ? "Ward" : "None");
+    const role = (roleIdx >= 0 ? cols[roleIdx] : cols[8]) || (isExco ? "Ward Coordinators" : "General Member (Non-EXCO)");
+    const vin = ((vinIdx >= 0 ? cols[vinIdx] : cols[10]) || "").replace(/^'/, "").trim();
+    const pollingUnit = (puIdx >= 0 ? cols[puIdx] : cols[11]) || "";
+    const bankName = (bankIdx >= 0 ? cols[bankIdx] : cols[12]) || "";
+    const accountNumber = ((acctIdx >= 0 ? cols[acctIdx] : cols[13]) || "").replace(/^'/, "").trim();
+    const signature = (signIdx >= 0 ? cols[signIdx] : cols[14]) || "Verified";
+    const timestamp = (dateIdx >= 0 ? cols[dateIdx] : cols[0]) || new Date().toISOString();
+
+    const id = refId ? `tmw-${refId.toLowerCase().replace(/[^a-z0-9]/g, "-")}` : `sheet-row-${i + 1}`;
+
+    records.push({
+      id,
+      referenceId: refId || `TMW-ROW-${i + 1}`,
+      fullName,
+      phone,
+      vin,
+      state,
+      lga,
+      ward,
+      pollingUnit,
+      bankName,
+      accountNumber,
+      signature,
+      isExco,
+      excoLevel,
+      role,
+      timestamp,
+      status: "synced"
+    });
+  }
+
+  return records;
+}
+
+async function fetchRecordsFromGoogleSheetCsv(sheetUrl: string): Promise<FetchSheetResult> {
+  const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (!match) {
+    return { success: false, records: [], error: "Invalid Google Sheets URL format. URL should contain '/spreadsheets/d/...'" };
+  }
+  const spreadsheetId = match[1];
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=0`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const res = await fetch(csvUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        success: false,
+        records: [],
+        isUnauthorized: true,
+        error: "Google Sheet access denied. In your Google Sheet, click 'Share' and set General access to 'Anyone with the link (Viewer)'."
+      };
+    }
+
+    const text = await res.text();
+    if (text.includes("accounts.google.com") || text.includes("ServiceLogin") || text.includes("<html")) {
+      return {
+        success: false,
+        records: [],
+        isUnauthorized: true,
+        error: "Google Sheet is restricted. Open your sheet, click 'Share' in the top-right corner, and change General access to 'Anyone with the link can view'."
+      };
+    }
+
+    const parsedRecords = parseGoogleSheetCsv(text);
+    return {
+      success: true,
+      records: parsedRecords,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      records: [],
+      error: `Could not export CSV from Google Sheet: ${err?.message || "Check link and network"}`
+    };
+  }
+}
+
 async function fetchRecordsFromGoogleSheets(scriptUrl: string): Promise<FetchSheetResult> {
   if (!scriptUrl || !scriptUrl.trim()) {
-    return { success: false, records: [], error: "No Google Apps Script URL provided." };
+    return { success: false, records: [], error: "No Google Apps Script or Google Sheets URL provided." };
   }
 
   const targetUrl = scriptUrl.trim();
+
+  // If user pasted a direct Google Spreadsheet document URL
+  if (targetUrl.includes("docs.google.com/spreadsheets/d/")) {
+    return await fetchRecordsFromGoogleSheetCsv(targetUrl);
+  }
+
   if (targetUrl.endsWith("/dev")) {
     return {
       success: false,
@@ -251,10 +414,52 @@ async function fetchRecordsFromGoogleSheets(scriptUrl: string): Promise<FetchShe
     };
   }
 
-  // Attempt 1: POST request with { action: "fetch_records" }
+  // Attempt 1: GET request with action=read_records (Apps Script webhooks respond most cleanly to GET)
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const getUrl = targetUrl.includes("?") ? `${targetUrl}&action=read_records` : `${targetUrl}?action=read_records`;
+    const getRes = await fetch(getUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (getRes.status === 401) {
+      return { success: false, records: [], isUnauthorized: true, error: "401 Unauthorized" };
+    }
+
+    const getText = await getRes.text();
+    if (getText.includes("accounts.google.com") || getText.includes("ServiceLogin")) {
+      return {
+        success: false,
+        records: [],
+        isUnauthorized: true,
+        error: "Google Apps Script redirected to sign-in. In Apps Script, click Deploy > Manage deployments > Edit > Who has access: Anyone."
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(getText);
+      if (parsed && Array.isArray(parsed.records)) {
+        return { success: true, records: parsed.records };
+      } else if (parsed && parsed.status === "active" && !parsed.records) {
+        return {
+          success: false,
+          records: [],
+          error: `Connected Apps Script (v${parsed.version || "3.0"}) needs updating to enable two-way record reading. In Database Settings, click 'Copy Code.gs', open your Google Sheet > Extensions > Apps Script, paste the updated code, and deploy a new version.`
+        };
+      }
+    } catch {}
+  } catch (getErr: any) {
+    console.warn("GET read_records attempt failed, trying POST fallback:", getErr?.message);
+  }
+
+  // Attempt 2: POST request with { action: "fetch_records" }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
     const postRes = await fetch(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -274,50 +479,24 @@ async function fetchRecordsFromGoogleSheets(scriptUrl: string): Promise<FetchShe
         const parsed = JSON.parse(postText);
         if (parsed && Array.isArray(parsed.records)) {
           return { success: true, records: parsed.records };
+        } else if (parsed && parsed.status === "active" && !parsed.records) {
+          return {
+            success: false,
+            records: [],
+            error: `Connected Apps Script needs updating. In Database Settings, click 'Copy Code.gs', open Extensions > Apps Script in your sheet, replace Code.gs, and deploy a new version.`
+          };
         }
       } catch {}
     }
   } catch (postErr) {
-    console.warn("POST fetch_records failed, trying GET fallback:", postErr);
+    console.warn("POST fetch_records failed:", postErr);
   }
 
-  // Attempt 2: GET request (e.g. doGet)
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const getUrl = targetUrl.includes("?") ? `${targetUrl}&action=read_records` : `${targetUrl}?action=read_records`;
-    const getRes = await fetch(getUrl, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    if (getRes.status === 401) {
-      return { success: false, records: [], isUnauthorized: true, error: "401 Unauthorized" };
-    }
-
-    const getText = await getRes.text();
-    if (getText.includes("accounts.google.com") || getText.includes("ServiceLogin")) {
-      return {
-        success: false,
-        records: [],
-        isUnauthorized: true,
-        error: "Google Apps Script redirected to sign-in. Set 'Who has access' to 'Anyone' in Web App deployment."
-      };
-    }
-
-    try {
-      const parsed = JSON.parse(getText);
-      if (parsed && Array.isArray(parsed.records)) {
-        return { success: true, records: parsed.records };
-      }
-    } catch {}
-  } catch (getErr: any) {
-    return { success: false, records: [], error: getErr?.message || "Failed fetching from Google Sheets." };
-  }
-
-  return { success: false, records: [], error: "No records returned from Google Sheet. Verify the updated Apps Script code is deployed." };
+  return { 
+    success: false, 
+    records: [], 
+    error: "No records returned from Google Sheet. Make sure your Apps Script Web App has the latest Code.gs deployed with 'Who has access: Anyone'." 
+  };
 }
 
 async function startServer() {
@@ -958,22 +1137,37 @@ async function startServer() {
   app.post("/api/fetch-from-sheets", async (req, res) => {
     try {
       const config = loadConfig();
-      if (!config.scriptUrl || config.scriptUrl.endsWith("/dev")) {
+      const targetScriptUrl = (req.body?.scriptUrl || config.scriptUrl || "").trim();
+
+      if (!targetScriptUrl) {
         res.status(400).json({
           success: false,
-          isDevUrl: Boolean(config.scriptUrl?.endsWith("/dev")),
-          message: "Please configure a live Google Apps Script Web App URL (/exec) in Database Settings first."
+          message: "Please configure your Google Sheet or Google Apps Script Web App URL first."
         });
         return;
       }
 
-      const result = await fetchRecordsFromGoogleSheets(config.scriptUrl);
+      if (targetScriptUrl.endsWith("/dev")) {
+        res.status(400).json({
+          success: false,
+          isDevUrl: true,
+          message: "Developer test URL (/dev) detected. In Apps Script, click Deploy > New deployment > Web app with 'Who has access: Anyone' to get an /exec URL."
+        });
+        return;
+      }
+
+      // Persist URL to server config so all connected devices immediately inherit it
+      if (req.body?.scriptUrl && req.body.scriptUrl !== config.scriptUrl) {
+        saveConfig({ ...config, scriptUrl: req.body.scriptUrl });
+      }
+
+      const result = await fetchRecordsFromGoogleSheets(targetScriptUrl);
 
       if (result.isUnauthorized) {
         res.json({
           success: false,
           isUnauthorized: true,
-          message: "Google returned 401 Unauthorized. Set Apps Script deployment 'Who has access' to 'Anyone'."
+          message: "Google returned 401 Unauthorized. Set Apps Script deployment 'Who has access' to 'Anyone' or set Google Sheet sharing to 'Anyone with the link can view'."
         });
         return;
       }
@@ -1012,12 +1206,16 @@ async function startServer() {
           }
         }
 
+        const msg = fetchedRecords.length === 0
+          ? "✅ Connection verified! Google Sheet is connected and ready, with 0 member rows recorded so far."
+          : `✅ Successfully fetched and merged ${fetchedRecords.length} records directly from Google Sheet! (Total: ${merged.length})`;
+
         res.json({
           success: true,
           count: fetchedRecords.length,
           totalInRegistry: merged.length,
           records: merged,
-          message: `✅ Successfully fetched ${fetchedRecords.length} records directly from Google Sheet and updated registry!`
+          message: msg
         });
         return;
       }

@@ -3,7 +3,7 @@
  * Provides copyable Google Apps Script code and step-by-step instructions
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   GOOGLE_APPS_SCRIPT_BOILERPLATE, 
   saveScriptUrl, 
@@ -48,8 +48,13 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [showCodePreview, setShowCodePreview] = useState(false);
+
+  useEffect(() => {
+    setUrlInput(currentUrl);
+  }, [currentUrl]);
 
   if (!isOpen) return null;
 
@@ -116,8 +121,6 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     }
   };
 
-  const [isFetching, setIsFetching] = useState(false);
-
   const handleTestFetch = async () => {
     if (!urlInput.trim()) {
       setTestResult({
@@ -130,7 +133,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     setIsFetching(true);
     setTestResult(null);
 
-    const res = await fetchFromGoogleSheets();
+    const res = await fetchFromGoogleSheets(urlInput.trim());
     setIsFetching(false);
 
     if (res.success) {

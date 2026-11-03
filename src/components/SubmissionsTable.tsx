@@ -191,7 +191,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
     setIsFetchingFromSheets(true);
     setSyncFeedback(null);
 
-    const res = await fetchFromGoogleSheets();
+    const res = await fetchFromGoogleSheets(scriptUrl);
     setIsFetchingFromSheets(false);
     onRefresh();
 
