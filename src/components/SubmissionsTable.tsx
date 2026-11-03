@@ -8,9 +8,6 @@ import React, { useState } from "react";
 import { RegistrationRecord } from "../types";
 import { 
   exportToCSV, 
-  submitRegistration, 
-  syncAllPendingToSheets,
-  pushAllToGoogleSheets,
   fetchFromGoogleSheets 
 } from "../services/googleSheetsService";
 import { 
@@ -23,12 +20,10 @@ import {
   Trash2, 
   Filter,
   FileSpreadsheet,
-  AlertTriangle,
   Loader2,
   Star,
   Users,
   Database,
-  Sparkles,
   ArrowDownToLine,
   Layers
 } from "lucide-react";
@@ -39,12 +34,9 @@ interface SubmissionsTableProps {
   onViewRecord: (record: RegistrationRecord) => void;
   onDeleteRecord: (id: string) => void;
   onClearAll: () => void;
-  isBackendConnected: boolean;
   scriptUrl?: string;
   lastSyncTime?: Date;
   isRefreshing?: boolean;
-  openSettings: () => void;
-  openSupabaseModal?: () => void;
 }
 
 export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
@@ -53,20 +45,14 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   onViewRecord,
   onDeleteRecord,
   onClearAll,
-  isBackendConnected,
   scriptUrl = "",
   lastSyncTime,
   isRefreshing = false,
-  openSettings,
-  openSupabaseModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "synced" | "pending" | "local_saved">("all");
   const [excoFilter, setExcoFilter] = useState<"all" | "exco" | "non_exco">("all");
-  const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
-
-  const isDevUrl = scriptUrl.trim().endsWith("/dev");
 
   // Filter records
   const filtered = records.filter(r => {
@@ -94,104 +80,13 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   const excoCount = records.filter(r => r.isExco || r.role?.toUpperCase().includes("EXCO")).length;
   const nonExcoCount = records.length - excoCount;
 
-  const handleSyncPending = async () => {
-    if (!isBackendConnected) {
-      openSettings();
-      return;
-    }
-
-    if (isDevUrl) {
-      openSettings();
-      return;
-    }
-
-    const pendingRecords = records.filter(r => r.status === "pending" || r.status === "local_saved");
-    if (pendingRecords.length === 0) {
-      setSyncFeedback("All records are already synchronized to Google Sheets!");
-      setTimeout(() => setSyncFeedback(null), 3000);
-      return;
-    }
-
-    setIsSyncing(true);
-    setSyncFeedback(null);
-
-    // Try batch server sync first
-    const batchRes = await syncAllPendingToSheets();
-    if (batchRes.success) {
-      setIsSyncing(false);
-      onRefresh();
-      setSyncFeedback(batchRes.message);
-      setTimeout(() => setSyncFeedback(null), 5000);
-      return;
-    }
-
-    if (batchRes.isUnauthorized) {
-      setIsSyncing(false);
-      setSyncFeedback("Sync blocked by Google (401 Unauthorized): In Apps Script deployment, change 'Who has access' to 'Anyone'.");
-      setTimeout(() => setSyncFeedback(null), 7000);
-      return;
-    }
-
-    // Fallback: Individual sync with dual-channel fallback
-    let successCount = 0;
-    for (const record of pendingRecords) {
-      try {
-        const res = await submitRegistration(record);
-        if (res.mode === "sheets") {
-          successCount++;
-        }
-      } catch (e) {
-        console.error("Sync error:", e);
-      }
-    }
-
-    setIsSyncing(false);
-    onRefresh();
-    if (successCount > 0) {
-      setSyncFeedback(`Successfully synchronized ${successCount} records to your Google Sheet!`);
-    } else {
-      setSyncFeedback("Unable to sync: check that Google Apps Script deployment access is set to 'Anyone'.");
-    }
-    setTimeout(() => setSyncFeedback(null), 5000);
-  };
-
-  const [isPushingAll, setIsPushingAll] = useState(false);
-
-  const handlePushAllToFreshSheet = async () => {
-    if (!isBackendConnected) {
-      openSettings();
-      return;
-    }
-    if (records.length === 0) {
-      setSyncFeedback("No records in registry to push.");
-      return;
-    }
-    if (!confirm(`Populate your fresh Google Sheet with all ${records.length} registered members? This will append the full registry to your sheet.`)) {
-      return;
-    }
-
-    setIsPushingAll(true);
-    setSyncFeedback(null);
-
-    const res = await pushAllToGoogleSheets();
-    setIsPushingAll(false);
-    onRefresh();
-    setSyncFeedback(res.message);
-    setTimeout(() => setSyncFeedback(null), 6000);
-  };
-
   const [isFetchingFromSheets, setIsFetchingFromSheets] = useState(false);
 
   const handleFetchFromGoogleSheets = async () => {
-    if (!isBackendConnected) {
-      openSettings();
-      return;
-    }
-
     setIsFetchingFromSheets(true);
     setSyncFeedback(null);
 
-    const res = await fetchFromGoogleSheets(scriptUrl);
+    const res = await fetchFromGoogleSheets(scriptUrl || undefined);
     setIsFetchingFromSheets(false);
     onRefresh();
 
@@ -216,7 +111,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
             Central Registry Live:
           </span>
           <span className="text-emerald-100 hidden sm:inline">
-            Submissions on any phone or laptop appear here automatically (syncs every 3.5s).
+            New registrations from any device appear here automatically.
           </span>
         </div>
 
@@ -235,27 +130,6 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Warning callout if connected URL is /dev */}
-      {isDevUrl && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
-          <div className="flex items-start sm:items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
-            <div>
-              <strong className="font-bold text-amber-900">Developer Test URL Active (/dev):</strong>
-              <span className="ml-1 text-slate-800">
-                All records are saved centrally and sync across Device A and Device B. To sync directly to your Google Sheet, create a live Web App deployment (/exec) with &apos;Who has access: Anyone&apos;.
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={openSettings}
-            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg text-xs whitespace-nowrap self-start sm:self-auto shrink-0 transition-colors"
-          >
-            Update Google Sheet URL
-          </button>
-        </div>
-      )}
 
       {/* Header and KPI strip */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
@@ -280,73 +154,25 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {openSupabaseModal && (
-              <button
-                onClick={openSupabaseModal}
-                className="px-3 py-2 text-xs font-semibold bg-emerald-50 text-emerald-950 border border-emerald-300 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 transition-colors shadow-2xs"
-                title="View Supabase SQL Guide and Cloud Connection"
-              >
-                <Database className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Supabase SQL Guide</span>
-              </button>
-            )}
-
-            <button
-              onClick={openSettings}
-              className={`px-3 py-2 text-xs font-semibold rounded-lg border flex items-center gap-1.5 transition-colors shadow-2xs ${
-                isBackendConnected
-                  ? "bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200"
-                  : "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
-              }`}
-              title="Open Google Sheets connection guide and setup"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              <span>{isBackendConnected ? "Google Sheet Ready" : "Setup Google Sheet"}</span>
-            </button>
-
-            {/* Populate Fresh Sheet with All Records */}
-            {isBackendConnected && records.length > 0 && (
-              <button
-                onClick={handlePushAllToFreshSheet}
-                disabled={isPushingAll}
-                className="px-3 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
-                title="Populates a brand-new empty Google Sheet with all existing registered members"
-              >
-                {isPushingAll ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-900" />
-                    <span>Populating Sheet...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5 text-slate-900" />
-                    <span>Populate Fresh Sheet ({records.length})</span>
-                  </>
-                )}
-              </button>
-            )}
-
             {/* Fetch and merge rows directly from Google Sheet */}
-            {isBackendConnected && (
-              <button
-                onClick={handleFetchFromGoogleSheets}
-                disabled={isFetchingFromSheets}
-                className="px-3 py-2 text-xs font-bold bg-[#0D5C3A] hover:bg-[#09432A] text-white rounded-lg flex items-center gap-1.5 transition-colors shadow-2xs"
-                title="Fetches and loads all rows directly from your Google Sheet into the coordinator registry"
-              >
-                {isFetchingFromSheets ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
-                    <span>Fetching Sheet Data...</span>
-                  </>
-                ) : (
-                  <>
-                    <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-200" />
-                    <span>Fetch from Google Sheet</span>
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              onClick={handleFetchFromGoogleSheets}
+              disabled={isFetchingFromSheets}
+              className="px-3 py-2 text-xs font-bold bg-[#0D5C3A] hover:bg-[#09432A] text-white rounded-lg flex items-center gap-1.5 transition-colors shadow-2xs"
+              title="Load the latest registrations"
+            >
+              {isFetchingFromSheets ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                  <span>Fetching...</span>
+                </>
+              ) : (
+                <>
+                  <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>Fetch Latest</span>
+                </>
+              )}
+            </button>
 
             <button
               onClick={() => exportToCSV(records)}
@@ -355,29 +181,6 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-slate-600" />
               <span>Export CSV</span>
-            </button>
-
-            <button
-              onClick={handleSyncPending}
-              disabled={isSyncing || pendingCount === 0}
-              className={`px-3.5 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-xs ${
-                pendingCount > 0
-                  ? "bg-[#0D5C3A] hover:bg-[#09432A] text-white"
-                  : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-              }`}
-              title="Synchronize pending records to both Supabase and Google Sheet"
-            >
-              {isSyncing ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
-                  <span>Syncing {pendingCount}...</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Sync Pending ({pendingCount})</span>
-                </>
-              )}
             </button>
 
             {records.length > 0 && (

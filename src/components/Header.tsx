@@ -5,24 +5,17 @@
 import React from "react";
 import { TMWLogo } from "./TMWLogo";
 import { 
-  FileSpreadsheet, 
   UserPlus, 
   TableProperties, 
-  Settings, 
   Printer, 
   Database,
   ShieldCheck,
-  Lock,
-  Zap
+  Lock
 } from "lucide-react";
 
 interface HeaderProps {
   activeTab: "individual" | "ward_sheet" | "registry" | "print_preview";
   setActiveTab: (tab: "individual" | "ward_sheet" | "registry" | "print_preview") => void;
-  openSettings: () => void;
-  openSupabaseModal?: () => void;
-  isBackendConnected: boolean;
-  isSupabaseConnected?: boolean;
   totalRegistered: number;
   isAdminMode?: boolean;
   onExitAdminMode?: () => void;
@@ -31,10 +24,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
-  openSettings,
-  openSupabaseModal,
-  isBackendConnected,
-  isSupabaseConnected = false,
   totalRegistered,
   isAdminMode = false,
   onExitAdminMode,
@@ -97,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Action Area: Always allows connecting Google Sheet and viewing registration count */}
+          {/* Action Area */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
             {isAdminMode && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg">
@@ -105,37 +94,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Coordinator Mode</span>
               </div>
             )}
-
-            {/* Supabase Cloud DB & SQL Guide Button */}
-            {openSupabaseModal && isAdminMode && (
-              <button
-                onClick={openSupabaseModal}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                  isSupabaseConnected
-                    ? "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-xs"
-                    : "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100"
-                }`}
-                title="Open Supabase Cloud Database setup and SQL table guide"
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>{isSupabaseConnected ? "Supabase Connected" : "Supabase SQL Setup"}</span>
-              </button>
-            )}
-
-            {/* "Connect Google Sheet" button: Always visible so user can connect anytime */}
-            <button
-              onClick={openSettings}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all shadow-2xs ${
-                isBackendConnected
-                  ? "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100"
-                  : "bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200"
-              }`}
-              title="Configure and manage Google Sheets connection"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              <span>{isBackendConnected ? "Google Sheet Connected" : "Connect Google Sheet"}</span>
-              <Settings className="w-3 h-3 text-slate-500 ml-0.5" />
-            </button>
 
             {/* Total registrations badge */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 rounded-lg">

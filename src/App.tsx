@@ -10,8 +10,6 @@ import { SingleRegistrationForm } from "./components/SingleRegistrationForm";
 import { WardSheetBatchForm } from "./components/WardSheetBatchForm";
 import { SubmissionsTable } from "./components/SubmissionsTable";
 import { RegistrationSlipModal } from "./components/RegistrationSlipModal";
-import { GoogleSheetsModal } from "./components/GoogleSheetsModal";
-import { SupabaseModal } from "./components/SupabaseModal";
 import { AdminAuthModal } from "./components/AdminAuthModal";
 import { PrintWardSheet } from "./components/PrintWardSheet";
 import { RegistrationRecord, WardSheetHeader, WardSheetRow } from "./types";
@@ -22,7 +20,6 @@ import {
   syncServerConfig,
   fetchServerRegistrations
 } from "./services/googleSheetsService";
-import { getSavedSupabaseConfig } from "./services/supabaseService";
 import { TMWLogo } from "./components/TMWLogo";
 import { 
   ShieldCheck, 
@@ -33,12 +30,6 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "print_preview">("individual");
   const [records, setRecords] = useState<RegistrationRecord[]>([]);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
-  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState<boolean>(() => {
-    const cfg = getSavedSupabaseConfig();
-    return Boolean(cfg.url && cfg.anonKey);
-  });
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<RegistrationRecord | null>(null);
   const [scriptUrl, setScriptUrl] = useState<string>("");
@@ -100,22 +91,12 @@ export default function App() {
     if (loadedUrl) setScriptUrl(loadedUrl);
     setRecords(getStoredRegistrations());
 
-    // 2. Fetch server-wide Google Apps Script config so all phones and computers share the URL
+    // Load the shared server-side sheet configuration.
     syncServerConfig().then((syncedUrl) => {
       if (syncedUrl) {
         setScriptUrl(syncedUrl);
       }
     });
-
-    // Check server-side Supabase configuration
-    fetch("/api/supabase-config")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.isConfigured) {
-          setIsSupabaseConfigured(true);
-        }
-      })
-      .catch(() => {});
 
     // 3. Initial fetch from central server
     refreshRecords();
@@ -217,14 +198,10 @@ export default function App() {
 
   return (
     <div className="app-shell min-h-screen flex flex-col font-sans text-slate-900">
-      {/* Top Brand Header (Cleaned of top bar phone/WhatsApp; hides Connect Google Sheet & Registry in public view) */}
+      {/* Top Brand Header */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        openSettings={() => setIsSettingsOpen(true)}
-        openSupabaseModal={() => setIsSupabaseModalOpen(true)}
-        isBackendConnected={Boolean(scriptUrl)}
-        isSupabaseConnected={isSupabaseConfigured}
         totalRegistered={records.length}
         isAdminMode={isAdminMode}
         onExitAdminMode={handleExitAdminMode}
@@ -248,17 +225,12 @@ export default function App() {
         {activeTab === "individual" && (
           <SingleRegistrationForm
             onSuccess={handleSingleSuccess}
-            openSettings={() => setIsSettingsOpen(true)}
-            isBackendConnected={Boolean(scriptUrl)}
-            isAdminMode={isAdminMode}
           />
         )}
 
         {activeTab === "ward_sheet" && (
           <WardSheetBatchForm
             onSuccess={handleBatchSuccess}
-            openSettings={() => setIsSettingsOpen(true)}
-            isBackendConnected={Boolean(scriptUrl)}
             onPrintPreview={handleOpenPrintPreview}
           />
         )}
@@ -271,12 +243,9 @@ export default function App() {
             onViewRecord={(rec) => setSelectedSlipRecord(rec)}
             onDeleteRecord={handleDeleteRecord}
             onClearAll={handleClearAll}
-            isBackendConnected={Boolean(scriptUrl)}
             scriptUrl={scriptUrl}
             lastSyncTime={lastSyncTime}
             isRefreshing={isRefreshing}
-            openSettings={() => setIsSettingsOpen(true)}
-            openSupabaseModal={() => setIsSupabaseModalOpen(true)}
           />
         )}
 
@@ -300,25 +269,6 @@ export default function App() {
           }}
         />
       )}
-
-      {/* Google Sheets Backend Setup Modal */}
-      <GoogleSheetsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        currentUrl={scriptUrl}
-        onUrlUpdated={(newUrl) => setScriptUrl(newUrl)}
-        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
-      />
-
-      {/* Supabase Database Setup & SQL Guide Modal */}
-      <SupabaseModal
-        isOpen={isSupabaseModalOpen}
-        onClose={() => setIsSupabaseModalOpen(false)}
-        onConfigUpdated={() => {
-          setIsSupabaseConfigured(true);
-          refreshRecords();
-        }}
-      />
 
       {/* Coordinator / Admin Passcode Modal */}
       <AdminAuthModal

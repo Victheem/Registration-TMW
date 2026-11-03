@@ -17,15 +17,12 @@ import {
   CheckCircle2, 
   Sparkles,
   ShieldAlert,
-  Star,
-  FileSpreadsheet
+  Star
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 interface WardSheetBatchFormProps {
   onSuccess: (count: number) => void;
-  openSettings: () => void;
-  isBackendConnected: boolean;
   onPrintPreview: (header: WardSheetHeader, rows: WardSheetRow[]) => void;
 }
 
@@ -33,8 +30,6 @@ const INITIAL_ROWS_COUNT = 20;
 
 export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
   onSuccess,
-  openSettings,
-  isBackendConnected,
   onPrintPreview,
 }) => {
   // Common Top Header
@@ -205,20 +200,6 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={openSettings}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg border flex items-center gap-1.5 transition-colors shadow-2xs ${
-                isBackendConnected
-                  ? "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100"
-                  : "bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200"
-              }`}
-              title="Connect or configure Google Sheets"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              <span>{isBackendConnected ? "Google Sheet Ready" : "Connect Google Sheet"}</span>
-            </button>
-
             <button
               type="button"
               onClick={handleFillSample}

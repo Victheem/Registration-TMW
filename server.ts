@@ -13,6 +13,7 @@ const DATA_DIR = path.resolve(__dirname, "data");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const REGISTRATIONS_FILE = path.join(DATA_DIR, "registrations.json");
 const DEFAULT_GOOGLE_APPS_SCRIPT_URL =
+  process.env.GOOGLE_APPS_SCRIPT_URL ||
   process.env.VITE_GOOGLE_APPS_SCRIPT_URL ||
   "https://script.google.com/macros/s/AKfycbxd2EXUybiObFJm2QtvWQDVXI_DOQxn_1i4hhCRGQXHq0qxK-UpBAHYsLVNbXvBNYU5-Q/exec";
 
