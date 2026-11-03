@@ -29,6 +29,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "state_registry" | "print_preview">("individual");
   const [records, setRecords] = useState<RegistrationRecord[]>([]);
   const [stateRecords, setStateRecords] = useState<RegistrationRecord[]>([]);
+  const [stateRegistryError, setStateRegistryError] = useState<string | null>(null);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [isStateAuthOpen, setIsStateAuthOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<RegistrationRecord | null>(null);
@@ -89,9 +90,10 @@ export default function App() {
     try {
       const updated = await fetchStateCoordinatorRegistrations(stateCoordinator.token);
       setStateRecords(updated);
+      setStateRegistryError(null);
     } catch (err) {
       console.warn("Error refreshing state coordinator records:", err);
-      setStateRecords([]);
+      setStateRegistryError(err instanceof Error ? err.message : "Could not load state registrations.");
     } finally {
       setIsStateRefreshing(false);
     }
@@ -231,12 +233,14 @@ export default function App() {
     setIsAdminMode(false);
     setRecords([]);
     setStateCoordinator(session);
+    setStateRegistryError(null);
     setActiveTab("state_registry");
   };
 
   const handleExitStateCoordinator = () => {
     setStateCoordinator(null);
     setStateRecords([]);
+    setStateRegistryError(null);
     if (activeTab === "state_registry") setActiveTab("individual");
   };
 
@@ -312,6 +316,7 @@ export default function App() {
             token={stateCoordinator.token}
             mustChangePin={stateCoordinator.mustChangePin}
             records={stateRecords}
+            loadError={stateRegistryError}
             onRefresh={refreshStateRecords}
             isRefreshing={isStateRefreshing}
             onPinChanged={(token) => setStateCoordinator((current) =>

@@ -28,6 +28,23 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.end(JSON.stringify(data));
 }
 
+function getRecordState(record: unknown): string {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return "";
+  const fields = record as Record<string, unknown>;
+  const stateField = Object.entries(fields).find(([key]) =>
+    ["state", "statename"].includes(key.toLowerCase().replace(/[^a-z]/g, "")),
+  )?.[1];
+  return typeof stateField === "string" ? stateField : "";
+}
+
+function normalizeState(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/\s+state$/, "");
+  if (["fct", "abuja", "abuja fct", "federal capital territory"].includes(normalized)) {
+    return "federal capital territory";
+  }
+  return normalized.replace(/[^a-z]/g, "");
+}
+
 async function readJsonBody(req: ApiRequest): Promise<Record<string, any>> {
   if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) {
     return req.body as Record<string, any>;
@@ -67,9 +84,8 @@ async function getSheetRecords(forceRefresh = false): Promise<unknown[]> {
   }
   if (recordsRequest) return recordsRequest;
 
-  recordsRequest = callSheet()
-    .then((data) => {
-      const records = Array.isArray(data.records) ? data.records : [];
+  recordsRequest = fetchSheetRecords()
+    .then((records) => {
       cachedRecords = { records, fetchedAt: Date.now() };
       return records;
     })
@@ -79,11 +95,33 @@ async function getSheetRecords(forceRefresh = false): Promise<unknown[]> {
   return recordsRequest;
 }
 
-async function callSheet(payload?: unknown): Promise<Record<string, any>> {
+async function fetchSheetRecords(): Promise<unknown[]> {
+  let getError: unknown;
+  try {
+    const url = new URL(SCRIPT_URL);
+    url.searchParams.set("action", "read_records");
+    const data = await callSheet(undefined, url.toString());
+    if (Array.isArray(data.records)) return data.records;
+  } catch (error) {
+    getError = error;
+  }
+
+  try {
+    const data = await callSheet({ action: "fetch_records", type: "fetch_records" });
+    if (Array.isArray(data.records)) return data.records;
+    throw new Error("Google Sheets did not return a registration list.");
+  } catch (postError) {
+    const getMessage = getError instanceof Error ? getError.message : "The GET request returned no registration list.";
+    const postMessage = postError instanceof Error ? postError.message : "The POST request failed.";
+    throw new Error(`Could not read registrations from Google Sheets. GET: ${getMessage} POST: ${postMessage}`);
+  }
+}
+
+async function callSheet(payload?: unknown, scriptUrl = SCRIPT_URL): Promise<Record<string, any>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
-    const response = await fetch(SCRIPT_URL, payload === undefined
+    const response = await fetch(scriptUrl, payload === undefined
       ? { method: "GET", redirect: "follow", signal: controller.signal }
       : {
           method: "POST",
@@ -204,10 +242,10 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
         return;
       }
       const records = await getSheetRecords();
+      const stateKey = normalizeState(claims.state);
       const stateRecords = records.filter((record) =>
         record && typeof record === "object" &&
-        typeof (record as Record<string, unknown>).state === "string" &&
-        ((record as Record<string, unknown>).state as string).trim().toLowerCase() === claims.state.toLowerCase(),
+        normalizeState(getRecordState(record)) === stateKey,
       );
       sendJson(res, 200, {
         success: true,

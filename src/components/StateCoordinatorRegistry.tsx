@@ -8,6 +8,7 @@ interface StateCoordinatorRegistryProps {
   token: string;
   mustChangePin: boolean;
   records: RegistrationRecord[];
+  loadError?: string | null;
   onRefresh: () => void;
   isRefreshing: boolean;
   onPinChanged: (token: string) => void;
@@ -18,6 +19,7 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
   token,
   mustChangePin,
   records,
+  loadError,
   onRefresh,
   isRefreshing,
   onPinChanged,
@@ -117,6 +119,12 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
         </p>
       )}
 
+      {loadError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">
+          Could not load the state registration list: {loadError}
+        </p>
+      )}
+
       {isChangingPin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
           <form onSubmit={handleChangePin} className="w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
@@ -211,7 +219,11 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
           <div className="px-4 py-12 text-center">
             <Users className="mx-auto mb-3 h-8 w-8 text-slate-400" />
             <p className="text-sm font-bold text-slate-800">
-              {search ? "No matching registrations" : "No registrations found for this state"}
+              {loadError
+                ? "The registration list could not be loaded."
+                : search
+                  ? "No matching registrations"
+                  : "No registrations found for this state"}
             </p>
           </div>
         ) : (
