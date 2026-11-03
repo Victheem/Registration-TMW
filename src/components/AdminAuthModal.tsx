@@ -44,7 +44,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
     setErrorMsg(null);
 
     const actualPin = getCoordinatorPin();
-    if (pinInput.trim() === actualPin || pinInput.trim() === "tmw2027" || pinInput.trim() === "2027") {
+    if (pinInput.trim() === actualPin) {
       onUnlock();
       onClose();
       setPinInput("");
