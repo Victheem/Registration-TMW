@@ -19,18 +19,21 @@ export const GOOGLE_APPS_SCRIPT_BOILERPLATE = `/**
  * Renewed Hope. Renewed Nigeria. Brighter Future.
  * ============================================================================
  * 
- * INSTRUCTIONS FOR DEPLOYMENT:
- * 1. In your Google Sheet, click on "Extensions" > "Apps Script".
- * 2. Delete all existing code in 'Code.gs' and paste this entire file.
- * 3. Click "Save" (disk icon or Ctrl+S).
- * 4. Click the blue "Deploy" button at top right > "New deployment".
- * 5. Select type: "Web app" (click gear icon if prompted).
- * 6. Set Description: "TMW Electoral Ward Registration Endpoint".
- * 7. Set "Execute as": "Me" (your Google account).
- * 8. Set "Who has access": "Anyone"  <-- CRITICAL for phone & external device submissions!
- *    (If left as "Only myself", external devices and servers receive 401 Unauthorized!)
- * 9. Click "Deploy", review permissions, and authorize your Google account.
- * 10. Copy the generated Web App URL (ending in /exec) and paste it into TMW App Settings!
+ * INSTRUCTIONS FOR DEPLOYING ON A BRAND-NEW GOOGLE SHEET:
+ * 1. Open your brand-new, empty Google Sheet (e.g. from https://sheets.new).
+ * 2. In the top menu, click "Extensions" > "Apps Script".
+ * 3. Delete all default code in 'Code.gs' and paste this entire code file.
+ * 4. Click the disk icon (Save) or press Ctrl+S.
+ * 5. At top-right, click the blue "Deploy" button > "New deployment".
+ * 6. Click the gear icon next to 'Select type' and choose "Web app".
+ * 7. Set Description: "TMW Electoral Ward Registration Endpoint".
+ * 8. Set "Execute as": "Me" (your Google account).
+ * 9. Set "Who has access": "Anyone"  <-- CRITICAL FOR PHONES & EXTERNAL DEVICES!
+ *    (DO NOT set to "Only myself", or mobile phones and field agents will get 401 Unauthorized!)
+ * 10. Click "Deploy", authorize access (Advanced > Go to project > Allow).
+ * 11. Copy the Web App URL (ends in /exec) and paste into the TMW App Settings.
+ * 
+ * * The script will automatically create the official green table headers on the first test or registration!
  */
 
 function doPost(e) {
@@ -59,15 +62,6 @@ function doPost(e) {
     var timestamp = new Date();
     var formattedDate = Utilities.formatDate(timestamp, "Africa/Lagos", "yyyy-MM-dd HH:mm:ss");
 
-    // Non-intrusive connection test / ping
-    if (payload.type === "ping_test" || payload.action === "test_connection") {
-      return createJsonResponse({
-        status: "success",
-        message: "Connection active! TMW Webhook is ready to receive registrations.",
-        timestamp: formattedDate
-      });
-    }
-
     var ss;
     try {
       ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -89,9 +83,61 @@ function doPost(e) {
 
     var sheet = ss.getActiveSheet();
     
-    // Auto-initialize header row if sheet is fresh
+    // Auto-initialize header row if sheet is fresh or empty
     if (sheet.getLastRow() === 0) {
       setupSheetHeaders(sheet);
+    }
+
+    // Explicit Action: Initialize fresh sheet headers & optional sample row
+    if (payload.action === "init_fresh_sheet" || payload.type === "init_fresh_sheet") {
+      setupSheetHeaders(sheet);
+      var sampleInserted = false;
+      if (payload.includeSampleRow) {
+        sheet.appendRow([
+          formattedDate,
+          "TMW-TEST-" + Utilities.getUuid().substring(0, 6).toUpperCase(),
+          payload.state || "Lagos",
+          payload.lga || "Ikeja",
+          payload.ward || "Ward 01 (Alausa)",
+          payload.fullName || "TMW Verification & Setup Test Row",
+          "EXCO",
+          "State",
+          "State Coordinator",
+          "'08012345678",
+          "'90F5B1234567890",
+          "PU 001 Alausa Secretariat",
+          "Central Bank of Nigeria",
+          "'0123456789",
+          "Verified / Setup Complete",
+          "System Test"
+        ]);
+        sampleInserted = true;
+      }
+      return createJsonResponse({
+        status: "success",
+        message: "Google Sheet headers initialized successfully!" + (sampleInserted ? " Test row inserted." : ""),
+        timestamp: formattedDate
+      });
+    }
+
+    // Explicit Action: Fetch/Read all records from Google Sheet
+    if (payload.action === "fetch_records" || payload.type === "fetch_records" || payload.action === "get_records") {
+      var fetchedRecords = readSheetRecords(sheet);
+      return createJsonResponse({
+        status: "success",
+        count: fetchedRecords.length,
+        records: fetchedRecords,
+        timestamp: formattedDate
+      });
+    }
+
+    // Ping test / connection test
+    if (payload.type === "ping_test" || payload.action === "test_connection") {
+      return createJsonResponse({
+        status: "success",
+        message: "Connection active! TMW Webhook is ready to receive registrations.",
+        timestamp: formattedDate
+      });
     }
 
     var insertedCount = 0;
@@ -122,7 +168,7 @@ function doPost(e) {
           rec.bankName || rec.bank || "",
           rec.accountNumber || rec.accountNo ? "'" + (rec.accountNumber || rec.accountNo) : "",
           rec.signature || "Confirmed / Signed",
-          "Synced Online"
+          "Dual-Sync Online"
         ]);
       }
       if (rows.length > 0) {
@@ -152,7 +198,7 @@ function doPost(e) {
         payload.bankName || payload.bank || "",
         payload.accountNumber || payload.accountNo ? "'" + (payload.accountNumber || payload.accountNo) : "",
         payload.signature || "Confirmed / Signed",
-        "Synced Online"
+        "Dual-Sync Online"
       ];
       sheet.appendRow(singleRow);
       insertedCount = 1;
@@ -176,23 +222,120 @@ function doPost(e) {
 }
 
 /**
- * Health check & verification endpoint
+ * Health check & record fetch endpoint for coordinator registry
  */
 function doGet(e) {
+  var ss;
+  try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss && ss.getActiveSheet() && ss.getActiveSheet().getLastRow() === 0) {
+      setupSheetHeaders(ss.getActiveSheet());
+    }
+  } catch (err) {}
+
+  if (!ss && e && e.parameter && e.parameter.spreadsheetId) {
+    try {
+      ss = SpreadsheetApp.openById(e.parameter.spreadsheetId);
+    } catch (err) {}
+  }
+
+  if (!ss) {
+    return createJsonResponse({
+      status: "error",
+      message: "Spreadsheet not found."
+    }, 400);
+  }
+
+  var sheet = ss.getActiveSheet();
+  var records = readSheetRecords(sheet);
+
   return createJsonResponse({
-    status: "active",
+    status: "success",
     institution: "Tinubu Movement Worldwide (TMW)",
     service: "Electoral Ward Registration Webhook API",
-    motto: "Renewed Hope. Renewed Nigeria. Brighter Future.",
-    version: "2.5.0",
+    version: "3.5.0",
+    count: records.length,
+    records: records,
     time: new Date().toISOString()
   });
 }
 
 /**
- * Creates standardized header row with TMW corporate styling and EXCO/Role tracking
+ * Reads all registered members from sheet row 2 downward and returns clean JSON objects
+ */
+function readSheetRecords(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return [];
+  }
+
+  var lastCol = Math.max(sheet.getLastColumn(), 16);
+  var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
+  var values = dataRange.getValues();
+  var records = [];
+
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var fullName = row[5] ? row[5].toString().trim() : "";
+    var phone = row[9] ? row[9].toString().trim().replace(/^'/, "") : "";
+    var refId = row[1] ? row[1].toString().trim() : "";
+
+    // Skip empty rows
+    if (!fullName && !phone && !refId) continue;
+
+    var ts = row[0] ? row[0].toString() : new Date().toISOString();
+    var state = row[2] ? row[2].toString().trim() : "";
+    var lga = row[3] ? row[3].toString().trim() : "";
+    var ward = row[4] ? row[4].toString().trim() : "";
+    var classification = row[6] ? row[6].toString().trim() : "";
+    var isExco = classification.toUpperCase().indexOf("EXCO") !== -1 && classification.toUpperCase().indexOf("NON") === -1;
+    var excoLevel = row[7] ? row[7].toString().trim() : (isExco ? "Ward" : "None");
+    var role = row[8] ? row[8].toString().trim() : (isExco ? "Ward Coordinators" : "General Member (Non-EXCO)");
+    var vin = row[10] ? row[10].toString().trim().replace(/^'/, "") : "";
+    var pollingUnit = row[11] ? row[11].toString().trim() : "";
+    var bankName = row[12] ? row[12].toString().trim() : "";
+    var accountNumber = row[13] ? row[13].toString().trim().replace(/^'/, "") : "";
+    var signature = row[14] ? row[14].toString().trim() : "Verified";
+
+    var recordId = refId ? ("tmw-" + refId.toLowerCase().replace(/[^a-z0-9]/g, "-")) : ("sheet-row-" + (i + 2));
+
+    records.push({
+      id: recordId,
+      referenceId: refId || ("TMW-ROW-" + (i + 2)),
+      fullName: fullName,
+      phone: phone,
+      vin: vin,
+      state: state,
+      lga: lga,
+      ward: ward,
+      pollingUnit: pollingUnit,
+      bankName: bankName,
+      accountNumber: accountNumber,
+      signature: signature,
+      isExco: isExco,
+      excoLevel: excoLevel,
+      role: role,
+      timestamp: ts,
+      status: "synced"
+    });
+  }
+
+  return records;
+}
+
+/**
+ * Creates standardized header row with TMW corporate styling and EXCO/Role tracking.
+ * Also configures text column formatting so phone & bank account leading zeros are never lost.
  */
 function setupSheetHeaders(sheet) {
+  // If header is already there, do not overwrite
+  if (sheet.getLastRow() >= 1) {
+    var firstCell = sheet.getRange(1, 1).getValue();
+    if (firstCell && firstCell.toString().indexOf("Timestamp") !== -1) {
+      return;
+    }
+  }
+
   var headers = [
     "Timestamp (WAT)",
     "Reference ID",
@@ -209,14 +352,32 @@ function setupSheetHeaders(sheet) {
     "Bank Name",
     "Account Number",
     "Signature / Status",
-    "Source"
+    "Sync Source"
   ];
-  sheet.appendRow(headers);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  } else {
+    sheet.insertRowBefore(1);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+
   var headerRange = sheet.getRange(1, 1, 1, headers.length);
   headerRange.setBackground("#0D5C3A"); // TMW Deep Forest Green
   headerRange.setFontColor("#FFFFFF");
   headerRange.setFontWeight("bold");
+  headerRange.setHorizontalAlignment("center");
+  sheet.setRowHeight(1, 38);
   sheet.setFrozenRows(1);
+
+  // Set Phone (Col 10), VIN (Col 11), Account Number (Col 14) to Plain Text
+  // This guarantees leading zeroes like 080... or 0123... are preserved
+  try {
+    var maxRows = Math.max(sheet.getMaxRows(), 500);
+    sheet.getRange(2, 10, maxRows - 1, 1).setNumberFormat("@");
+    sheet.getRange(2, 11, maxRows - 1, 1).setNumberFormat("@");
+    sheet.getRange(2, 14, maxRows - 1, 1).setNumberFormat("@");
+  } catch (fmtErr) {}
 }
 
 function createJsonResponse(data) {
@@ -353,7 +514,7 @@ export function saveStoredRegistrations(records: RegistrationRecord[]): void {
  */
 export async function submitRegistration(record: RegistrationRecord): Promise<{
   success: boolean;
-  mode: 'sheets' | 'local_queued' | 'unauthorized_401';
+  mode: 'supabase' | 'sheets' | 'local_queued' | 'unauthorized_401';
   message: string;
   isUnauthorized?: boolean;
   isDevUrl?: boolean;
@@ -590,6 +751,46 @@ export async function testConnection(url: string): Promise<{
 }
 
 /**
+ * Automatically initializes headers in a fresh Google Sheet and writes an optional sample test row
+ */
+export async function initFreshSheet(url: string, includeSample = true): Promise<{
+  ok: boolean;
+  message: string;
+  isUnauthorized?: boolean;
+}> {
+  if (!url || !url.startsWith("https://script.google.com/macros/s/")) {
+    return {
+      ok: false,
+      message: "Please enter a valid Google Apps Script Web App URL first."
+    };
+  }
+
+  try {
+    const res = await fetch("/api/init-sheet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scriptUrl: url, includeSample }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        ok: data.ok,
+        message: data.message,
+        isUnauthorized: data.isUnauthorized,
+      };
+    }
+  } catch (err: any) {
+    console.warn("Error calling /api/init-sheet:", err);
+  }
+
+  return {
+    ok: false,
+    message: "Failed to initialize sheet. Check network connection or Apps Script permissions."
+  };
+}
+
+/**
  * Triggers batch synchronization of all pending records to Google Sheets
  */
 export async function syncAllPendingToSheets(): Promise<{
@@ -608,6 +809,68 @@ export async function syncAllPendingToSheets(): Promise<{
     return { success: false, message: err?.message || "Network error syncing to Google Sheets." };
   }
   return { success: false, message: "Server sync failed." };
+}
+
+/**
+ * Pushes ALL records currently in the central registry to Google Sheets.
+ * Ideal when connecting a brand-new Google Sheet to immediately backfill all existing data.
+ */
+export async function pushAllToGoogleSheets(): Promise<{
+  success: boolean;
+  count?: number;
+  message: string;
+  isUnauthorized?: boolean;
+}> {
+  try {
+    const res = await fetch("/api/sync-all-to-sheets", { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+    const errData = await res.json().catch(() => null);
+    return {
+      success: false,
+      message: errData?.message || "Failed pushing all records to Google Sheets."
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || "Network error communicating with server."
+    };
+  }
+}
+
+/**
+ * Fetches all registered members directly from Google Sheets and merges them with the central registry
+ */
+export async function fetchFromGoogleSheets(): Promise<{
+  success: boolean;
+  count?: number;
+  totalInRegistry?: number;
+  records?: RegistrationRecord[];
+  message: string;
+  isUnauthorized?: boolean;
+}> {
+  try {
+    const res = await fetch("/api/fetch-from-sheets", { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.records && Array.isArray(data.records)) {
+        saveStoredRegistrations(data.records);
+      }
+      return data;
+    }
+    const errData = await res.json().catch(() => null);
+    return {
+      success: false,
+      message: errData?.message || "Failed fetching records from Google Sheet."
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || "Network error fetching records from Google Sheet."
+    };
+  }
 }
 
 /**

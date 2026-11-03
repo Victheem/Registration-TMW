@@ -11,6 +11,7 @@ import { WardSheetBatchForm } from "./components/WardSheetBatchForm";
 import { SubmissionsTable } from "./components/SubmissionsTable";
 import { RegistrationSlipModal } from "./components/RegistrationSlipModal";
 import { GoogleSheetsModal } from "./components/GoogleSheetsModal";
+import { SupabaseModal } from "./components/SupabaseModal";
 import { AdminAuthModal } from "./components/AdminAuthModal";
 import { PrintWardSheet } from "./components/PrintWardSheet";
 import { RegistrationRecord, WardSheetHeader, WardSheetRow } from "./types";
@@ -21,6 +22,7 @@ import {
   syncServerConfig,
   fetchServerRegistrations
 } from "./services/googleSheetsService";
+import { getSavedSupabaseConfig } from "./services/supabaseService";
 import { TMWLogo } from "./components/TMWLogo";
 import { 
   ShieldCheck, 
@@ -32,6 +34,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "print_preview">("individual");
   const [records, setRecords] = useState<RegistrationRecord[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState<boolean>(() => {
+    const cfg = getSavedSupabaseConfig();
+    return Boolean(cfg.url && cfg.anonKey);
+  });
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<RegistrationRecord | null>(null);
   const [scriptUrl, setScriptUrl] = useState<string>("");
@@ -99,6 +106,16 @@ export default function App() {
         setScriptUrl(syncedUrl);
       }
     });
+
+    // Check server-side Supabase configuration
+    fetch("/api/supabase-config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isConfigured) {
+          setIsSupabaseConfigured(true);
+        }
+      })
+      .catch(() => {});
 
     // 3. Initial fetch from central server
     refreshRecords();
@@ -205,7 +222,9 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         openSettings={() => setIsSettingsOpen(true)}
+        openSupabaseModal={() => setIsSupabaseModalOpen(true)}
         isBackendConnected={Boolean(scriptUrl)}
+        isSupabaseConnected={isSupabaseConfigured}
         totalRegistered={records.length}
         isAdminMode={isAdminMode}
         onExitAdminMode={handleExitAdminMode}
@@ -257,6 +276,7 @@ export default function App() {
             lastSyncTime={lastSyncTime}
             isRefreshing={isRefreshing}
             openSettings={() => setIsSettingsOpen(true)}
+            openSupabaseModal={() => setIsSupabaseModalOpen(true)}
           />
         )}
 
@@ -287,6 +307,17 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         currentUrl={scriptUrl}
         onUrlUpdated={(newUrl) => setScriptUrl(newUrl)}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+      />
+
+      {/* Supabase Database Setup & SQL Guide Modal */}
+      <SupabaseModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        onConfigUpdated={() => {
+          setIsSupabaseConfigured(true);
+          refreshRecords();
+        }}
       />
 
       {/* Coordinator / Admin Passcode Modal */}

@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,13 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function loadConfig(): { scriptUrl: string } {
+interface ServerConfig {
+  scriptUrl?: string;
+  supabaseUrl?: string;
+  supabaseKey?: string;
+}
+
+function loadConfig(): ServerConfig {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const raw = fs.readFileSync(CONFIG_FILE, "utf-8");
@@ -26,10 +33,14 @@ function loadConfig(): { scriptUrl: string } {
   } catch (err) {
     console.error("Error loading server config:", err);
   }
-  return { scriptUrl: process.env.VITE_GOOGLE_APPS_SCRIPT_URL || "" };
+  return {
+    scriptUrl: process.env.VITE_GOOGLE_APPS_SCRIPT_URL || "",
+    supabaseUrl: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
+    supabaseKey: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "",
+  };
 }
 
-function saveConfig(config: { scriptUrl: string }): void {
+function saveConfig(config: ServerConfig): void {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
   } catch (err) {
@@ -55,6 +66,69 @@ function saveRegistrations(records: any[]): void {
   } catch (err) {
     console.error("Error saving registrations:", err);
   }
+}
+
+function getSupabaseClient(): SupabaseClient | null {
+  const cfg = loadConfig();
+  const url = cfg.supabaseUrl || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = cfg.supabaseKey || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (url && key && url.startsWith("https://")) {
+    try {
+      return createClient(url, key);
+    } catch (e) {
+      console.warn("Failed creating server Supabase client:", e);
+    }
+  }
+  return null;
+}
+
+function recordToSupabaseRow(rec: any) {
+  return {
+    id: rec.id,
+    reference_id: rec.referenceId,
+    full_name: rec.fullName || rec.names || "",
+    phone: rec.phone || "",
+    vin: rec.vin || "",
+    state: rec.state || "",
+    lga: rec.lga || "",
+    ward: rec.ward || "",
+    polling_unit: rec.pollingUnit || "",
+    bank_name: rec.bankName || rec.bank || "",
+    account_number: rec.accountNumber || rec.accountNo || "",
+    signature: rec.signature || rec.sign || "",
+    is_exco: Boolean(rec.isExco),
+    exco_level: rec.excoLevel || (rec.isExco ? "Ward" : "None"),
+    role: rec.role || (rec.isExco ? "Ward Coordinators" : "General Member (Non-EXCO)"),
+    batch_id: rec.batchId || null,
+    batch_row_number: rec.batchRowNumber || rec.sn || null,
+    coordinator_name: rec.coordinatorName || null,
+    status: "registered",
+  };
+}
+
+function supabaseRowToRecord(row: any) {
+  return {
+    id: row.id,
+    referenceId: row.reference_id,
+    fullName: row.full_name,
+    phone: row.phone,
+    vin: row.vin,
+    state: row.state,
+    lga: row.lga,
+    ward: row.ward,
+    pollingUnit: row.polling_unit,
+    bankName: row.bank_name,
+    accountNumber: row.account_number,
+    signature: row.signature,
+    isExco: Boolean(row.is_exco),
+    excoLevel: row.exco_level,
+    role: row.role,
+    batchId: row.batch_id,
+    batchRowNumber: row.batch_row_number,
+    coordinatorName: row.coordinator_name,
+    timestamp: row.created_at,
+    status: "synced",
+  };
 }
 
 interface ForwardResult {
@@ -154,6 +228,96 @@ async function forwardToGoogleSheets(scriptUrl: string, payload: any): Promise<F
       error: err?.name === "AbortError" ? "Google Apps Script request timed out after 6 seconds." : (err?.message || "Connection failed."),
     };
   }
+}
+
+interface FetchSheetResult {
+  success: boolean;
+  records: any[];
+  error?: string;
+  isUnauthorized?: boolean;
+}
+
+async function fetchRecordsFromGoogleSheets(scriptUrl: string): Promise<FetchSheetResult> {
+  if (!scriptUrl || !scriptUrl.trim()) {
+    return { success: false, records: [], error: "No Google Apps Script URL provided." };
+  }
+
+  const targetUrl = scriptUrl.trim();
+  if (targetUrl.endsWith("/dev")) {
+    return {
+      success: false,
+      records: [],
+      error: "Google Apps Script /dev URLs block external requests. Deploy as Web app with 'Who has access: Anyone' to get an /exec URL."
+    };
+  }
+
+  // Attempt 1: POST request with { action: "fetch_records" }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const postRes = await fetch(targetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "fetch_records", type: "fetch_records" }),
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (postRes.status === 401) {
+      return { success: false, records: [], isUnauthorized: true, error: "401 Unauthorized" };
+    }
+
+    const postText = await postRes.text();
+    if (!postText.includes("accounts.google.com") && !postText.includes("ServiceLogin")) {
+      try {
+        const parsed = JSON.parse(postText);
+        if (parsed && Array.isArray(parsed.records)) {
+          return { success: true, records: parsed.records };
+        }
+      } catch {}
+    }
+  } catch (postErr) {
+    console.warn("POST fetch_records failed, trying GET fallback:", postErr);
+  }
+
+  // Attempt 2: GET request (e.g. doGet)
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const getUrl = targetUrl.includes("?") ? `${targetUrl}&action=read_records` : `${targetUrl}?action=read_records`;
+    const getRes = await fetch(getUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (getRes.status === 401) {
+      return { success: false, records: [], isUnauthorized: true, error: "401 Unauthorized" };
+    }
+
+    const getText = await getRes.text();
+    if (getText.includes("accounts.google.com") || getText.includes("ServiceLogin")) {
+      return {
+        success: false,
+        records: [],
+        isUnauthorized: true,
+        error: "Google Apps Script redirected to sign-in. Set 'Who has access' to 'Anyone' in Web App deployment."
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(getText);
+      if (parsed && Array.isArray(parsed.records)) {
+        return { success: true, records: parsed.records };
+      }
+    } catch {}
+  } catch (getErr: any) {
+    return { success: false, records: [], error: getErr?.message || "Failed fetching from Google Sheets." };
+  }
+
+  return { success: false, records: [], error: "No records returned from Google Sheet. Verify the updated Apps Script code is deployed." };
 }
 
 async function startServer() {
@@ -270,12 +434,148 @@ async function startServer() {
     }
   });
 
-  app.get("/api/registrations", (req, res) => {
-    const records = loadRegistrations();
+  // Initialize a brand-new, fresh Google Sheet with headers and optional sample row
+  app.post("/api/init-sheet", async (req, res) => {
+    try {
+      const { scriptUrl, includeSample } = req.body || {};
+      const config = loadConfig();
+      const targetUrl = (typeof scriptUrl === "string" && scriptUrl.trim()) ? scriptUrl.trim() : config.scriptUrl;
+
+      if (!targetUrl || !targetUrl.startsWith("https://script.google.com/macros/s/")) {
+        res.status(400).json({
+          success: false,
+          ok: false,
+          message: "Please enter a valid Google Apps Script Web App URL first."
+        });
+        return;
+      }
+
+      if (targetUrl.endsWith("/dev")) {
+        res.json({
+          success: false,
+          ok: false,
+          isDevUrl: true,
+          message: "⚠️ Google Apps Script /dev URLs block external devices. Please click Deploy ➔ New deployment ➔ Web app ➔ Who has access: Anyone, then copy the live /exec URL."
+        });
+        return;
+      }
+
+      const initPayload = {
+        action: "init_fresh_sheet",
+        type: "init_fresh_sheet",
+        includeSampleRow: Boolean(includeSample),
+        state: "Lagos",
+        lga: "Ikeja",
+        ward: "Ward 01 (Alausa)",
+        fullName: "TMW Verification & Setup Test Row",
+        timestamp: new Date().toISOString()
+      };
+
+      const result = await forwardToGoogleSheets(targetUrl, initPayload);
+
+      if (result.success) {
+        saveConfig({ scriptUrl: targetUrl });
+        res.json({
+          success: true,
+          ok: true,
+          verifiedUrl: targetUrl,
+          message: "✅ Fresh Google Sheet initialized with official TMW headers!" + (includeSample ? " Sample test row added." : "")
+        });
+        return;
+      }
+
+      if (result.isUnauthorized || result.httpStatus === 401) {
+        res.json({
+          success: false,
+          ok: false,
+          isUnauthorized: true,
+          message: "Google returned 401 Unauthorized! In Apps Script, click Deploy > Manage deployments > Edit > set 'Who has access' to 'Anyone' > Deploy."
+        });
+        return;
+      }
+
+      res.json({
+        success: false,
+        ok: false,
+        message: result.error || "Failed to initialize sheet headers. Check deployment settings."
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        ok: false,
+        message: err?.message || "Internal server error initializing fresh Google Sheet."
+      });
+    }
+  });
+
+  // Supabase Cloud Configuration Endpoints
+  app.get("/api/supabase-config", (req, res) => {
+    const config = loadConfig();
     res.json({
       success: true,
-      records,
-      count: records.length,
+      supabaseUrl: config.supabaseUrl || "",
+      isConfigured: Boolean(config.supabaseUrl && config.supabaseKey),
+    });
+  });
+
+  app.post("/api/supabase-config", (req, res) => {
+    const { supabaseUrl, supabaseKey } = req.body || {};
+    const config = loadConfig();
+    if (typeof supabaseUrl === "string") {
+      config.supabaseUrl = supabaseUrl.trim();
+    }
+    if (typeof supabaseKey === "string" && supabaseKey.trim()) {
+      config.supabaseKey = supabaseKey.trim();
+    }
+    saveConfig(config);
+    res.json({
+      success: true,
+      isConfigured: Boolean(config.supabaseUrl && config.supabaseKey),
+      message: "Supabase configuration updated successfully across all devices!",
+    });
+  });
+
+  app.get("/api/registrations", async (req, res) => {
+    const localRecords = loadRegistrations();
+    const supabase = getSupabaseClient();
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("tmw_registrations")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          const cloudRecords = data.map(supabaseRowToRecord);
+          // Merge cloud records with local cache
+          const idMap = new Map<string, any>();
+          cloudRecords.forEach((r) => idMap.set(r.id, r));
+          localRecords.forEach((r) => {
+            if (!idMap.has(r.id)) {
+              idMap.set(r.id, r);
+            }
+          });
+          const merged = Array.from(idMap.values());
+          saveRegistrations(merged);
+          return res.json({
+            success: true,
+            records: merged,
+            count: merged.length,
+            isCloud: true,
+            serverTime: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        console.warn("Could not query Supabase in /api/registrations:", err);
+      }
+    }
+
+    res.json({
+      success: true,
+      records: localRecords,
+      count: localRecords.length,
+      isCloud: false,
       serverTime: new Date().toISOString()
     });
   });
@@ -323,10 +623,33 @@ async function startServer() {
       const updated = [enhancedRecord, ...filtered];
       saveRegistrations(updated);
 
-      // 2. FORWARD TO GOOGLE APPS SCRIPT IF CONFIGURED
+      // 2. SAVE TO SUPABASE CLOUD DATABASE IF CONFIGURED
+      const supabase = getSupabaseClient();
+      let isSupabaseSaved = false;
+      if (supabase) {
+        try {
+          const row = recordToSupabaseRow(enhancedRecord);
+          const { error: sError } = await supabase
+            .from("tmw_registrations")
+            .upsert(row, { onConflict: "reference_id" });
+          if (!sError) {
+            isSupabaseSaved = true;
+            enhancedRecord.status = "synced";
+            saveRegistrations([enhancedRecord, ...filtered]);
+          } else {
+            console.warn("Supabase upsert warning:", sError.message);
+          }
+        } catch (sErr: any) {
+          console.warn("Supabase exception during submit-registration:", sErr?.message);
+        }
+      }
+
+      // 3. FORWARD TO GOOGLE APPS SCRIPT IF CONFIGURED
+      let isGoogleSheetSaved = false;
       let forwardResult: ForwardResult = { success: false };
       if (effectiveScriptUrl && !isDevUrl) {
         forwardResult = await forwardToGoogleSheets(effectiveScriptUrl, enhancedRecord);
+        isGoogleSheetSaved = Boolean(forwardResult.success);
       } else if (isDevUrl) {
         forwardResult = {
           success: false,
@@ -336,51 +659,55 @@ async function startServer() {
         };
       }
 
-      if (forwardResult.success) {
-        // Mark as synced in central server storage
+      if (isGoogleSheetSaved || isSupabaseSaved) {
         enhancedRecord.status = "synced";
         const currentRecords = loadRegistrations();
         const reUpdated = currentRecords.map((r) => r.id === enhancedRecord.id ? { ...r, status: "synced" } : r);
         saveRegistrations(reUpdated);
-
-        res.json({
-          success: true,
-          mode: "sheets",
-          message: "Registration submitted and synced live to Google Sheets!",
-          record: enhancedRecord,
-        });
-        return;
       }
 
-      if (isDevUrl) {
-        res.json({
-          success: true,
-          mode: "unauthorized_401",
-          isUnauthorized: true,
-          isDevUrl: true,
-          message: "Saved to Central Registry! ⚠️ Notice: Your Google Sheet URL ends in /dev. Create a live deployment (/exec) with 'Who has access: Anyone' to auto-sync to Sheets.",
-          record: enhancedRecord,
-        });
-        return;
-      }
+      let message = "Registration saved to Central Registry!";
+      let mode: "dual_sync" | "supabase" | "sheets" | "unauthorized_401" | "queued" | "server_saved" = "server_saved";
 
-      if (forwardResult.isUnauthorized) {
-        res.json({
-          success: true,
-          mode: "unauthorized_401",
-          isUnauthorized: true,
-          message: "Saved to Central Registry! ⚠️ Note: Google Sheet sync blocked (Set Apps Script deployment access to 'Anyone').",
-          record: enhancedRecord,
-        });
-        return;
+      if (isSupabaseSaved && isGoogleSheetSaved) {
+        mode = "dual_sync";
+        message = "✅ Registration saved simultaneously to BOTH Supabase Cloud & Google Sheet!";
+      } else if (isSupabaseSaved && !effectiveScriptUrl) {
+        mode = "supabase";
+        message = "✅ Registration saved to Supabase Cloud Database! (Google Sheet not connected)";
+      } else if (isSupabaseSaved && forwardResult.isUnauthorized) {
+        mode = "supabase";
+        message = "Saved to Supabase Cloud! ⚠️ Note: Google Sheet sync blocked (Set Apps Script deployment access to 'Anyone').";
+      } else if (isSupabaseSaved && !isGoogleSheetSaved) {
+        mode = "supabase";
+        message = `Saved to Supabase Cloud! ⚠️ Google Sheet: ${forwardResult.error || "Sync pending"}`;
+      } else if (isGoogleSheetSaved) {
+        mode = "sheets";
+        message = "✅ Registration submitted and synced live to Google Sheets!";
+      } else if (isDevUrl) {
+        mode = "unauthorized_401";
+        message = "Saved to Central Registry! ⚠️ Notice: Your Google Sheet URL ends in /dev. Deploy as Web App (/exec) with 'Who has access: Anyone'.";
+      } else if (forwardResult.isUnauthorized) {
+        mode = "unauthorized_401";
+        message = "Saved to Central Registry! ⚠️ Note: Google Sheet sync blocked (Set Apps Script deployment access to 'Anyone').";
+      } else {
+        mode = effectiveScriptUrl ? "queued" : "server_saved";
+        message = effectiveScriptUrl 
+          ? "Registration saved to Central Database! (Queued for Google Sheets sync)."
+          : "Registration saved to Central Registry! Connect Supabase or Google Sheet in Settings for cloud backup.";
       }
 
       res.json({
         success: true,
-        mode: effectiveScriptUrl ? "queued" : "server_saved",
-        message: effectiveScriptUrl 
-          ? "Registration saved to Central Database! (Queued for Google Sheets sync)."
-          : "Registration saved to Central Database! Connect your Google Sheet in Settings to auto-sync.",
+        mode,
+        isUnauthorized: forwardResult.isUnauthorized,
+        isDevUrl,
+        savedTo: {
+          local: true,
+          supabase: isSupabaseSaved,
+          googleSheet: isGoogleSheetSaved
+        },
+        message,
         record: enhancedRecord,
       });
     } catch (err: any) {
@@ -415,13 +742,34 @@ async function startServer() {
       const combined = [...newRecords, ...existing];
       saveRegistrations(combined);
 
-      // 2. FORWARD TO GOOGLE APPS SCRIPT
+      // 2. PERSIST BATCH TO SUPABASE IF CONFIGURED
+      const supabase = getSupabaseClient();
+      let isSupabaseSaved = false;
+      if (supabase) {
+        try {
+          const rows = newRecords.map(recordToSupabaseRow);
+          const { error: sError } = await supabase
+            .from("tmw_registrations")
+            .upsert(rows, { onConflict: "reference_id" });
+          if (!sError) {
+            isSupabaseSaved = true;
+          } else {
+            console.warn("Supabase batch upsert warning:", sError.message);
+          }
+        } catch (sErr: any) {
+          console.warn("Supabase exception during batch submit:", sErr?.message);
+        }
+      }
+
+      // 3. FORWARD TO GOOGLE APPS SCRIPT
+      let isGoogleSheetSaved = false;
       let forwardResult: ForwardResult = { success: false };
       if (config.scriptUrl && !isDevUrl) {
         forwardResult = await forwardToGoogleSheets(config.scriptUrl, { header, records: newRecords });
+        isGoogleSheetSaved = Boolean(forwardResult.success);
       }
 
-      if (forwardResult.success) {
+      if (isSupabaseSaved || isGoogleSheetSaved) {
         const reUpdated = loadRegistrations().map((r) => {
           if (newRecords.some((nr: any) => nr.id === r.id)) {
             return { ...r, status: "synced" };
@@ -429,27 +777,41 @@ async function startServer() {
           return r;
         });
         saveRegistrations(reUpdated);
+      }
 
-        res.json({
-          success: true,
-          count: newRecords.length,
-          mode: "sheets",
-          message: `Successfully saved ${newRecords.length} members and synced live to Google Sheets!`,
-        });
-        return;
+      let batchMsg = "";
+      let batchMode: "dual_sync" | "supabase" | "sheets" | "unauthorized_401" | "server_saved" = "server_saved";
+
+      if (isSupabaseSaved && isGoogleSheetSaved) {
+        batchMode = "dual_sync";
+        batchMsg = `✅ Successfully saved ${newRecords.length} members to BOTH Supabase Cloud & Google Sheet!`;
+      } else if (isSupabaseSaved) {
+        batchMode = "supabase";
+        batchMsg = `Successfully saved ${newRecords.length} members to Supabase Cloud Database!`;
+      } else if (isGoogleSheetSaved) {
+        batchMode = "sheets";
+        batchMsg = `Successfully saved ${newRecords.length} members to Google Sheet!`;
+      } else {
+        batchMode = forwardResult.isUnauthorized ? "unauthorized_401" : "server_saved";
+        batchMsg = `Saved ${newRecords.length} members to Central Registry!${
+          isDevUrl
+            ? " ⚠️ Notice: Google Sheet URL is a /dev URL. Deploy as Web App (/exec) with 'Who has access: Anyone' to sync."
+            : (forwardResult.isUnauthorized ? " ⚠️ Note: Google Sheet returned 401 (Set 'Who has access' to 'Anyone')." : "")
+        }`;
       }
 
       res.json({
         success: true,
         count: newRecords.length,
-        mode: forwardResult.isUnauthorized ? "unauthorized_401" : "server_saved",
+        mode: batchMode,
+        savedTo: {
+          local: true,
+          supabase: isSupabaseSaved,
+          googleSheet: isGoogleSheetSaved
+        },
         isUnauthorized: forwardResult.isUnauthorized || isDevUrl,
         isDevUrl,
-        message: `Saved ${newRecords.length} members to Central Registry!${
-          isDevUrl
-            ? " ⚠️ Notice: Google Sheet URL is a /dev URL. Deploy as Web App (/exec) with 'Who has access: Anyone' to sync."
-            : (forwardResult.isUnauthorized ? " ⚠️ Note: Google Sheet returned 401 (Set 'Who has access' to 'Anyone')." : "")
-        }`,
+        message: batchMsg,
       });
     } catch (err: any) {
       console.error("Error submitting batch sheet:", err);
@@ -457,27 +819,116 @@ async function startServer() {
     }
   });
 
-  // Sync all pending/unsynced records to Google Sheets
+  // Sync all pending/unsynced records to BOTH Google Sheets and Supabase
   app.post("/api/sync-all", async (req, res) => {
     try {
       const config = loadConfig();
-      if (!config.scriptUrl) {
-        res.status(400).json({ success: false, message: "No Google Sheet URL connected. Please connect in Settings." });
-        return;
-      }
-
       const records = loadRegistrations();
       const pending = records.filter(r => r.status !== "synced");
 
       if (pending.length === 0) {
-        res.json({ success: true, syncedCount: 0, message: "All records are already synced to Google Sheets!" });
+        res.json({ success: true, syncedCount: 0, message: "All records are already synchronized to cloud database & sheets!" });
         return;
       }
 
-      // Forward pending as batch
+      let supabaseSynced = false;
+      let sheetsSynced = false;
+      let sheetsError = "";
+      let sheetsUnauthorized = false;
+
+      // 1. Sync pending records to Supabase Cloud Database
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          const rows = pending.map(recordToSupabaseRow);
+          const { error: sError } = await supabase
+            .from("tmw_registrations")
+            .upsert(rows, { onConflict: "reference_id" });
+          if (!sError) {
+            supabaseSynced = true;
+          } else {
+            console.warn("Supabase sync-all warning:", sError.message);
+          }
+        } catch (sErr: any) {
+          console.warn("Supabase exception in sync-all:", sErr?.message);
+        }
+      }
+
+      // 2. Sync pending records to Google Sheets
+      if (config.scriptUrl && !config.scriptUrl.endsWith("/dev")) {
+        const forwardResult = await forwardToGoogleSheets(config.scriptUrl, {
+          type: "batch_sync",
+          records: pending,
+        });
+        if (forwardResult.success) {
+          sheetsSynced = true;
+        } else {
+          sheetsError = forwardResult.error || "";
+          sheetsUnauthorized = Boolean(forwardResult.isUnauthorized);
+        }
+      }
+
+      if (supabaseSynced || sheetsSynced) {
+        const updated = records.map(r => ({ ...r, status: "synced" as const }));
+        saveRegistrations(updated);
+
+        let msg = "";
+        if (supabaseSynced && sheetsSynced) {
+          msg = `✅ Successfully synchronized ${pending.length} pending records to BOTH Supabase Cloud & Google Sheet!`;
+        } else if (supabaseSynced) {
+          msg = `Synchronized ${pending.length} records to Supabase Cloud!` + (sheetsError ? ` (Google Sheet: ${sheetsError})` : "");
+        } else {
+          msg = `Synchronized ${pending.length} records to Google Sheet!`;
+        }
+
+        res.json({
+          success: true,
+          syncedCount: pending.length,
+          savedTo: {
+            supabase: supabaseSynced,
+            googleSheet: sheetsSynced,
+          },
+          isUnauthorized: sheetsUnauthorized,
+          message: msg,
+        });
+        return;
+      }
+
+      res.json({
+        success: false,
+        isUnauthorized: sheetsUnauthorized,
+        message: sheetsUnauthorized 
+          ? "Sync blocked by Google (401 Unauthorized). Set Apps Script deployment access to 'Anyone'."
+          : (sheetsError || "Neither Supabase nor Google Sheets is connected or reachable.")
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err?.message || "Server error syncing records." });
+    }
+  });
+
+  // Push ALL records in the registry to Google Sheets (useful when starting a fresh Google Sheet)
+  app.post("/api/sync-all-to-sheets", async (req, res) => {
+    try {
+      const config = loadConfig();
+      const records = loadRegistrations();
+
+      if (records.length === 0) {
+        res.json({ success: true, count: 0, message: "No records in registry to push to Google Sheet." });
+        return;
+      }
+
+      if (!config.scriptUrl || config.scriptUrl.endsWith("/dev")) {
+        res.status(400).json({
+          success: false,
+          isDevUrl: Boolean(config.scriptUrl?.endsWith("/dev")),
+          message: "Please configure a live Google Apps Script Web App URL (/exec) in Database Settings first."
+        });
+        return;
+      }
+
       const forwardResult = await forwardToGoogleSheets(config.scriptUrl, {
         type: "batch_sync",
-        records: pending,
+        records: records,
       });
 
       if (forwardResult.success) {
@@ -485,8 +936,8 @@ async function startServer() {
         saveRegistrations(updated);
         res.json({
           success: true,
-          syncedCount: pending.length,
-          message: `Successfully synchronized ${pending.length} pending records to Google Sheets!`
+          count: records.length,
+          message: `✅ Successfully populated your fresh Google Sheet with all ${records.length} registered members!`
         });
         return;
       }
@@ -494,25 +945,120 @@ async function startServer() {
       res.json({
         success: false,
         isUnauthorized: forwardResult.isUnauthorized,
-        message: forwardResult.isUnauthorized 
-          ? "Sync blocked by Google (401 Unauthorized). Set Apps Script deployment access to 'Anyone'."
-          : (forwardResult.error || "Failed syncing to Google Sheets.")
+        message: forwardResult.isUnauthorized
+          ? "Sync blocked by Google (401 Unauthorized). In Apps Script, set 'Who has access' to 'Anyone'."
+          : (forwardResult.error || "Failed populating Google Sheet.")
       });
     } catch (err: any) {
-      res.status(500).json({ success: false, message: err?.message || "Server error syncing records." });
+      res.status(500).json({ success: false, message: err?.message || "Error populating Google Sheet." });
     }
   });
 
-  app.delete("/api/registrations/:id", (req, res) => {
+  // Fetch and import all records directly from Google Sheets into the registry
+  app.post("/api/fetch-from-sheets", async (req, res) => {
+    try {
+      const config = loadConfig();
+      if (!config.scriptUrl || config.scriptUrl.endsWith("/dev")) {
+        res.status(400).json({
+          success: false,
+          isDevUrl: Boolean(config.scriptUrl?.endsWith("/dev")),
+          message: "Please configure a live Google Apps Script Web App URL (/exec) in Database Settings first."
+        });
+        return;
+      }
+
+      const result = await fetchRecordsFromGoogleSheets(config.scriptUrl);
+
+      if (result.isUnauthorized) {
+        res.json({
+          success: false,
+          isUnauthorized: true,
+          message: "Google returned 401 Unauthorized. Set Apps Script deployment 'Who has access' to 'Anyone'."
+        });
+        return;
+      }
+
+      if (result.success && Array.isArray(result.records)) {
+        const fetchedRecords = result.records;
+        const currentLocal = loadRegistrations();
+
+        // Merge fetched records with current registry by referenceId or id
+        const map = new Map<string, any>();
+        currentLocal.forEach((r) => {
+          const key = (r.referenceId || r.id || "").trim().toUpperCase();
+          if (key) map.set(key, r);
+        });
+
+        fetchedRecords.forEach((r) => {
+          const key = (r.referenceId || r.id || "").trim().toUpperCase();
+          if (key) {
+            const existing = map.get(key) || {};
+            map.set(key, { ...existing, ...r, status: "synced" as const });
+          }
+        });
+
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+        saveRegistrations(merged);
+
+        // Also upsert to Supabase if configured so both databases remain 100% in sync
+        const supabase = getSupabaseClient();
+        if (supabase && fetchedRecords.length > 0) {
+          try {
+            const rows = fetchedRecords.map(recordToSupabaseRow);
+            await supabase.from("tmw_registrations").upsert(rows, { onConflict: "reference_id" });
+          } catch (sErr) {
+            console.warn("Supabase upsert from sheet records warning:", sErr);
+          }
+        }
+
+        res.json({
+          success: true,
+          count: fetchedRecords.length,
+          totalInRegistry: merged.length,
+          records: merged,
+          message: `✅ Successfully fetched ${fetchedRecords.length} records directly from Google Sheet and updated registry!`
+        });
+        return;
+      }
+
+      res.json({
+        success: false,
+        message: result.error || "Unable to read records from Google Sheet."
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err?.message || "Error fetching records from Google Sheet." });
+    }
+  });
+
+  app.delete("/api/registrations/:id", async (req, res) => {
     const { id } = req.params;
     const existing = loadRegistrations();
     const updated = existing.filter((r) => r.id !== id);
     saveRegistrations(updated);
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.from("tmw_registrations").delete().eq("id", id);
+      } catch (err) {
+        console.warn("Supabase delete warning:", err);
+      }
+    }
+
     res.json({ success: true, message: "Record deleted." });
   });
 
-  app.delete("/api/registrations", (req, res) => {
+  app.delete("/api/registrations", async (req, res) => {
     saveRegistrations([]);
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.from("tmw_registrations").delete().neq("id", "none");
+      } catch (err) {
+        console.warn("Supabase clear warning:", err);
+      }
+    }
     res.json({ success: true, message: "All records cleared." });
   });
 

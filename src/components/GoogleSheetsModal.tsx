@@ -7,7 +7,9 @@ import React, { useState } from "react";
 import { 
   GOOGLE_APPS_SCRIPT_BOILERPLATE, 
   saveScriptUrl, 
-  testConnection 
+  testConnection,
+  initFreshSheet,
+  fetchFromGoogleSheets
 } from "../services/googleSheetsService";
 import { 
   X, 
@@ -20,7 +22,11 @@ import {
   Loader2, 
   HelpCircle,
   Terminal,
-  Save
+  Save,
+  Sparkles,
+  Database,
+  ArrowRight,
+  ArrowDownToLine
 } from "lucide-react";
 
 interface GoogleSheetsModalProps {
@@ -28,6 +34,7 @@ interface GoogleSheetsModalProps {
   onClose: () => void;
   currentUrl: string;
   onUrlUpdated: (newUrl: string) => void;
+  onOpenSupabaseModal?: () => void;
 }
 
 export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
@@ -35,10 +42,12 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   onClose,
   currentUrl,
   onUrlUpdated,
+  onOpenSupabaseModal,
 }) => {
   const [urlInput, setUrlInput] = useState(currentUrl);
   const [copiedCode, setCopiedCode] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [showCodePreview, setShowCodePreview] = useState(false);
 
@@ -59,7 +68,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     onUrlUpdated(urlInput.trim());
     setTestResult({
       ok: true,
-      message: "Google Apps Script Web App URL saved successfully!"
+      message: "Google Apps Script Web App URL saved successfully across all devices!"
     });
   };
 
@@ -82,6 +91,60 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     if (res.ok) {
       saveScriptUrl(urlInput);
       onUrlUpdated(urlInput.trim());
+    }
+  };
+
+  const handleInitFreshSheet = async () => {
+    if (!urlInput.trim()) {
+      setTestResult({
+        ok: false,
+        message: "Please enter your Google Apps Script Web App URL first to initialize your fresh sheet."
+      });
+      return;
+    }
+
+    setIsInitializing(true);
+    setTestResult(null);
+
+    const res = await initFreshSheet(urlInput.trim(), true);
+    setIsInitializing(false);
+    setTestResult(res);
+
+    if (res.ok) {
+      saveScriptUrl(urlInput);
+      onUrlUpdated(urlInput.trim());
+    }
+  };
+
+  const [isFetching, setIsFetching] = useState(false);
+
+  const handleTestFetch = async () => {
+    if (!urlInput.trim()) {
+      setTestResult({
+        ok: false,
+        message: "Please enter your Google Apps Script Web App URL first."
+      });
+      return;
+    }
+
+    setIsFetching(true);
+    setTestResult(null);
+
+    const res = await fetchFromGoogleSheets();
+    setIsFetching(false);
+
+    if (res.success) {
+      setTestResult({
+        ok: true,
+        message: `✅ Read verified! Successfully fetched ${res.count || 0} records directly from your Google Sheet into the coordinator registry.`
+      });
+      saveScriptUrl(urlInput);
+      onUrlUpdated(urlInput.trim());
+    } else {
+      setTestResult({
+        ok: false,
+        message: res.message || "Failed reading from Google Sheet. Make sure you updated your Apps Script and deployed with 'Who has access: Anyone'."
+      });
     }
   };
 
@@ -165,7 +228,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleSave}
@@ -178,7 +241,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 <button
                   type="button"
                   onClick={handleTest}
-                  disabled={isTesting}
+                  disabled={isTesting || isInitializing}
                   className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
                 >
                   {isTesting ? (
@@ -188,6 +251,46 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                     </>
                   ) : (
                     <span>Test Connection</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleInitFreshSheet}
+                  disabled={isInitializing || isTesting || isFetching}
+                  className="px-3.5 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-400 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+                  title="Applies green headers to row 1 and adds a verified test row"
+                >
+                  {isInitializing ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                      <span>Initializing Sheet...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Initialize Fresh Sheet &amp; Add Test Row</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTestFetch}
+                  disabled={isFetching || isTesting || isInitializing}
+                  className="px-3.5 py-2 bg-[#0D5C3A] hover:bg-[#09432A] text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+                  title="Tests 2-way read and fetches all rows from Google Sheet directly into registry"
+                >
+                  {isFetching ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                      <span>Reading Sheet Rows...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>Fetch &amp; Test Read from Sheet</span>
+                    </>
                   )}
                 </button>
               </div>
@@ -242,6 +345,34 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             )}
           </div>
 
+          {/* Dual-Sync Informational Callout */}
+          <div className="p-4 bg-gradient-to-r from-emerald-900 to-[#0D5C3A] text-white rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-emerald-300" />
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+                  Dual-Sync Architecture (Supabase + Google Sheets)
+                </span>
+              </div>
+              <p className="text-xs text-emerald-100 leading-relaxed max-w-xl">
+                Every member registered on any field phone or computer is automatically saved to <strong>BOTH Supabase Cloud Database</strong> and your <strong>live Google Sheet</strong> simultaneously for 100% data redundancy.
+              </p>
+            </div>
+            {onOpenSupabaseModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenSupabaseModal();
+                }}
+                className="px-3 py-1.5 bg-white text-emerald-950 font-bold text-xs rounded-lg hover:bg-emerald-50 transition-colors shrink-0 flex items-center gap-1 shadow-xs"
+              >
+                <span>View Supabase Setup</span>
+                <ArrowRight className="w-3 h-3 text-emerald-700" />
+              </button>
+            )}
+          </div>
+
           {/* Quick Copy Box */}
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
             <div className="flex items-center justify-between mb-2">
@@ -273,9 +404,15 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 )}
               </button>
             </div>
-            <p className="text-xs text-slate-500 mb-3">
-              This lightweight script creates spreadsheet headers automatically, supports concurrency locking, and appends both single registrations and 20-row ward batch sheets.
+            <p className="text-xs text-slate-600 mb-2 font-medium">
+              This updated script enables <strong>full 2-way synchronization</strong>: it automatically receives new registrations from phones &amp; laptops AND exports all Google Sheet rows directly back to the Coordinator Registry.
             </p>
+            <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg text-[11px] text-emerald-950 mb-3 space-y-1">
+              <span className="font-bold text-emerald-900 block">🔄 Already deployed your Google Sheet? (Update in 15 seconds):</span>
+              <p className="text-slate-700">
+                In Apps Script: paste this code into <code className="bg-white px-1 py-0.5 rounded font-mono text-[10px]">Code.gs</code>, click <strong>Save</strong> ➔ click <strong>Deploy</strong> ➔ <strong>Manage deployments</strong> ➔ click <strong>Edit (Pencil)</strong> ➔ select <strong>Version: New version</strong> ➔ click <strong>Deploy</strong>. Your URL stays the same!
+              </p>
+            </div>
 
             <button
               type="button"

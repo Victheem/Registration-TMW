@@ -6,7 +6,13 @@
 
 import React, { useState } from "react";
 import { RegistrationRecord } from "../types";
-import { exportToCSV, submitRegistration, syncAllPendingToSheets } from "../services/googleSheetsService";
+import { 
+  exportToCSV, 
+  submitRegistration, 
+  syncAllPendingToSheets,
+  pushAllToGoogleSheets,
+  fetchFromGoogleSheets 
+} from "../services/googleSheetsService";
 import { 
   Search, 
   Download, 
@@ -20,7 +26,11 @@ import {
   AlertTriangle,
   Loader2,
   Star,
-  Users
+  Users,
+  Database,
+  Sparkles,
+  ArrowDownToLine,
+  Layers
 } from "lucide-react";
 
 interface SubmissionsTableProps {
@@ -34,6 +44,7 @@ interface SubmissionsTableProps {
   lastSyncTime?: Date;
   isRefreshing?: boolean;
   openSettings: () => void;
+  openSupabaseModal?: () => void;
 }
 
 export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
@@ -47,6 +58,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   lastSyncTime,
   isRefreshing = false,
   openSettings,
+  openSupabaseModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "synced" | "pending" | "local_saved">("all");
@@ -143,6 +155,50 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
     setTimeout(() => setSyncFeedback(null), 5000);
   };
 
+  const [isPushingAll, setIsPushingAll] = useState(false);
+
+  const handlePushAllToFreshSheet = async () => {
+    if (!isBackendConnected) {
+      openSettings();
+      return;
+    }
+    if (records.length === 0) {
+      setSyncFeedback("No records in registry to push.");
+      return;
+    }
+    if (!confirm(`Populate your fresh Google Sheet with all ${records.length} registered members? This will append the full registry to your sheet.`)) {
+      return;
+    }
+
+    setIsPushingAll(true);
+    setSyncFeedback(null);
+
+    const res = await pushAllToGoogleSheets();
+    setIsPushingAll(false);
+    onRefresh();
+    setSyncFeedback(res.message);
+    setTimeout(() => setSyncFeedback(null), 6000);
+  };
+
+  const [isFetchingFromSheets, setIsFetchingFromSheets] = useState(false);
+
+  const handleFetchFromGoogleSheets = async () => {
+    if (!isBackendConnected) {
+      openSettings();
+      return;
+    }
+
+    setIsFetchingFromSheets(true);
+    setSyncFeedback(null);
+
+    const res = await fetchFromGoogleSheets();
+    setIsFetchingFromSheets(false);
+    onRefresh();
+
+    setSyncFeedback(res.message);
+    setTimeout(() => setSyncFeedback(null), 6000);
+  };
+
   const formattedSyncTime = lastSyncTime 
     ? lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : "Just now";
@@ -224,13 +280,81 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {openSupabaseModal && (
+              <button
+                onClick={openSupabaseModal}
+                className="px-3 py-2 text-xs font-semibold bg-emerald-50 text-emerald-950 border border-emerald-300 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 transition-colors shadow-2xs"
+                title="View Supabase SQL Guide and Cloud Connection"
+              >
+                <Database className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Supabase SQL Guide</span>
+              </button>
+            )}
+
+            <button
+              onClick={openSettings}
+              className={`px-3 py-2 text-xs font-semibold rounded-lg border flex items-center gap-1.5 transition-colors shadow-2xs ${
+                isBackendConnected
+                  ? "bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200"
+                  : "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
+              }`}
+              title="Open Google Sheets connection guide and setup"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{isBackendConnected ? "Google Sheet Ready" : "Setup Google Sheet"}</span>
+            </button>
+
+            {/* Populate Fresh Sheet with All Records */}
+            {isBackendConnected && records.length > 0 && (
+              <button
+                onClick={handlePushAllToFreshSheet}
+                disabled={isPushingAll}
+                className="px-3 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
+                title="Populates a brand-new empty Google Sheet with all existing registered members"
+              >
+                {isPushingAll ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-900" />
+                    <span>Populating Sheet...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-slate-900" />
+                    <span>Populate Fresh Sheet ({records.length})</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Fetch and merge rows directly from Google Sheet */}
+            {isBackendConnected && (
+              <button
+                onClick={handleFetchFromGoogleSheets}
+                disabled={isFetchingFromSheets}
+                className="px-3 py-2 text-xs font-bold bg-[#0D5C3A] hover:bg-[#09432A] text-white rounded-lg flex items-center gap-1.5 transition-colors shadow-2xs"
+                title="Fetches and loads all rows directly from your Google Sheet into the coordinator registry"
+              >
+                {isFetchingFromSheets ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                    <span>Fetching Sheet Data...</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Fetch from Google Sheet</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               onClick={() => exportToCSV(records)}
               disabled={records.length === 0}
-              className="px-3.5 py-2 text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg hover:bg-emerald-100 flex items-center gap-1.5 transition-colors disabled:opacity-40"
+              className="px-3 py-2 text-xs font-semibold bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 transition-colors disabled:opacity-40"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Export CSV (with Roles)</span>
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              <span>Export CSV</span>
             </button>
 
             <button
@@ -241,6 +365,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
                   ? "bg-[#0D5C3A] hover:bg-[#09432A] text-white"
                   : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
               }`}
+              title="Synchronize pending records to both Supabase and Google Sheet"
             >
               {isSyncing ? (
                 <>
@@ -250,7 +375,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
               ) : (
                 <>
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Sync to Sheets ({pendingCount})</span>
+                  <span>Sync Pending ({pendingCount})</span>
                 </>
               )}
             </button>
@@ -258,7 +383,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
             {records.length > 0 && (
               <button
                 onClick={onClearAll}
-                className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                className="px-2.5 py-2 text-xs font-medium text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                 title="Clear local device cache"
               >
                 <Trash2 className="w-3.5 h-3.5" />
