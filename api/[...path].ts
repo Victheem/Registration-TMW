@@ -256,6 +256,105 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
       return;
     }
 
+    if (endpoint === "id-card/search" && req.method === "GET") {
+      const url = new URL(req.url || "/", "http://localhost");
+      const query = String(url.searchParams.get("query") || "").trim().toLowerCase();
+      if (!query) {
+        sendJson(res, 200, { success: true, count: 0, records: [] });
+        return;
+      }
+      const records = (await getSheetRecords()) as Array<Record<string, any>>;
+      const normalizedQuery = query.replace(/[^a-z0-9]/g, "");
+
+      const matches = records.filter((r) => {
+        const ref = String(r.referenceId || r.id || "").toLowerCase();
+        const normalizedRef = ref.replace(/[^a-z0-9]/g, "");
+        const name = String(r.fullName || r.names || "").toLowerCase();
+        const phone = String(r.phone || "").replace(/[^0-9]/g, "");
+        const vin = String(r.vin || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+        return (
+          ref.includes(query) ||
+          normalizedRef.includes(normalizedQuery) ||
+          name.includes(query) ||
+          (normalizedQuery.length >= 4 && phone.includes(normalizedQuery)) ||
+          (normalizedQuery.length >= 4 && vin.includes(normalizedQuery))
+        );
+      });
+
+      const safeMatches = matches.slice(0, 25).map((r) => ({
+        id: r.id || r.referenceId,
+        referenceId: r.referenceId || r.id,
+        fullName: r.fullName || r.names,
+        state: r.state || "",
+        lga: r.lga || "",
+        ward: r.ward || "",
+        pollingUnit: r.pollingUnit || "",
+        vin: r.vin || "",
+        phone: r.phone || "",
+        isExco: Boolean(r.isExco),
+        excoLevel: r.excoLevel || "None",
+        role: r.role || (r.isExco ? "Executive Official" : "General Member"),
+        timestamp: r.timestamp || new Date().toISOString(),
+        status: r.status || "synced",
+      }));
+
+      sendJson(res, 200, { success: true, count: safeMatches.length, records: safeMatches });
+      return;
+    }
+
+    if (endpoint.startsWith("id-card/verify/") && req.method === "GET") {
+      const rawId = decodeURIComponent(endpoint.replace(/^id-card\/verify\//, "").trim()).toLowerCase();
+      const normalizedTarget = rawId.replace(/[^a-z0-9]/g, "");
+      const records = (await getSheetRecords()) as Array<Record<string, any>>;
+
+      const found = records.find((r) => {
+        const ref = String(r.referenceId || "").toLowerCase();
+        const id = String(r.id || "").toLowerCase();
+        const normalizedRef = ref.replace(/[^a-z0-9]/g, "");
+        const normalizedId = id.replace(/[^a-z0-9]/g, "");
+
+        return (
+          ref === rawId ||
+          id === rawId ||
+          normalizedRef === normalizedTarget ||
+          normalizedId === normalizedTarget
+        );
+      });
+
+      if (!found) {
+        sendJson(res, 404, {
+          success: false,
+          verified: false,
+          message: "No registered member found matching this reference code.",
+        });
+        return;
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        verified: true,
+        member: {
+          id: found.id || found.referenceId,
+          referenceId: found.referenceId || found.id,
+          fullName: found.fullName || found.names,
+          state: found.state || "",
+          lga: found.lga || "",
+          ward: found.ward || "",
+          pollingUnit: found.pollingUnit || "",
+          vin: found.vin || "",
+          phone: found.phone || "",
+          isExco: Boolean(found.isExco),
+          excoLevel: found.excoLevel || "None",
+          role: found.role || (found.isExco ? "Executive Committee Officer" : "General Member"),
+          timestamp: found.timestamp || new Date().toISOString(),
+          status: found.status || "synced",
+          verifiedAt: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
     if (endpoint === "submit-registration" && req.method === "POST") {
       const record = await readJsonBody(req);
       if (!record.fullName && !record.phone && !record.vin) {

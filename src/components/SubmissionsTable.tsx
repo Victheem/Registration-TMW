@@ -25,7 +25,8 @@ import {
   Users,
   Database,
   ArrowDownToLine,
-  Layers
+  Layers,
+  CreditCard
 } from "lucide-react";
 
 interface SubmissionsTableProps {
@@ -34,6 +35,7 @@ interface SubmissionsTableProps {
   onViewRecord: (record: RegistrationRecord) => void;
   onDeleteRecord: (id: string) => void;
   onClearAll: () => void;
+  onPrintIdCard?: (record: RegistrationRecord) => void;
   scriptUrl?: string;
   authToken?: string;
   lastSyncTime?: Date;
@@ -46,6 +48,7 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
   onViewRecord,
   onDeleteRecord,
   onClearAll,
+  onPrintIdCard,
   scriptUrl = "",
   authToken,
   lastSyncTime,
@@ -359,6 +362,15 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
                       {/* Actions */}
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          {onPrintIdCard && (
+                            <button
+                              onClick={() => onPrintIdCard(item)}
+                              className="p-1 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded"
+                              title="Print Member ID Card"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => onViewRecord(item)}
                             className="p-1 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded"

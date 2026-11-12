@@ -24,12 +24,14 @@ interface RegistrationSlipModalProps {
   record: RegistrationRecord | null;
   onClose: () => void;
   onNewRegistration: () => void;
+  onViewIdCard?: (record: RegistrationRecord) => void;
 }
 
 export const RegistrationSlipModal: React.FC<RegistrationSlipModalProps> = ({
   record,
   onClose,
   onNewRegistration,
+  onViewIdCard,
 }) => {
   if (!record) return null;
 
@@ -211,6 +213,16 @@ export const RegistrationSlipModal: React.FC<RegistrationSlipModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2">
+            {onViewIdCard && (
+              <button
+                type="button"
+                onClick={() => onViewIdCard(record)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>View &amp; Print ID Card</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handlePrintSlip}

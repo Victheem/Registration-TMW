@@ -11,10 +11,11 @@ import {
   Database,
   ShieldCheck,
   Lock,
-  UsersRound
+  UsersRound,
+  CreditCard
 } from "lucide-react";
 
-type HeaderTab = "individual" | "ward_sheet" | "registry" | "state_registry" | "print_preview";
+type HeaderTab = "individual" | "ward_sheet" | "id_card" | "registry" | "state_registry" | "print_preview";
 
 interface HeaderProps {
   activeTab: HeaderTab;
@@ -167,6 +168,22 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Ward Sheet (Batch 20-Rows)</span>
               <span className="text-[10px] bg-emerald-100 text-emerald-900 font-bold px-1.5 py-0.2 rounded">
                 Official Form
+              </span>
+            </button>
+
+            {/* 3. Member ID Card Search & Print */}
+            <button
+              onClick={() => setActiveTab("id_card")}
+              className={`flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
+                activeTab === "id_card"
+                  ? "bg-[#0D5C3A] text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Member ID Card</span>
+              <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded">
+                Print Card
               </span>
             </button>
 

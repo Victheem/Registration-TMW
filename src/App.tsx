@@ -14,6 +14,9 @@ import { AdminAuthModal } from "./components/AdminAuthModal";
 import { StateCoordinatorAuthModal } from "./components/StateCoordinatorAuthModal";
 import { StateCoordinatorRegistry } from "./components/StateCoordinatorRegistry";
 import { PrintWardSheet } from "./components/PrintWardSheet";
+import { MemberIdCard } from "./components/MemberIdCard";
+import { MemberIdCardPortal } from "./components/MemberIdCardPortal";
+import { MemberVerificationModal } from "./components/MemberVerificationModal";
 import { RegistrationRecord, WardSheetHeader, WardSheetRow } from "./types";
 import { 
   getSavedScriptUrl, 
@@ -26,13 +29,15 @@ import { TMWLogo } from "./components/TMWLogo";
 import { Lock } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "registry" | "state_registry" | "print_preview">("individual");
+  const [activeTab, setActiveTab] = useState<"individual" | "ward_sheet" | "id_card" | "registry" | "state_registry" | "print_preview">("individual");
   const [records, setRecords] = useState<RegistrationRecord[]>([]);
   const [stateRecords, setStateRecords] = useState<RegistrationRecord[]>([]);
   const [stateRegistryError, setStateRegistryError] = useState<string | null>(null);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [isStateAuthOpen, setIsStateAuthOpen] = useState(false);
   const [selectedSlipRecord, setSelectedSlipRecord] = useState<RegistrationRecord | null>(null);
+  const [selectedIdCardRecord, setSelectedIdCardRecord] = useState<RegistrationRecord | null>(null);
+  const [verifyingReferenceId, setVerifyingReferenceId] = useState<string | null>(null);
   const [scriptUrl, setScriptUrl] = useState<string>("");
   const [nationalToken, setNationalToken] = useState<string | null>(null);
   const [stateCoordinator, setStateCoordinator] = useState<{
@@ -110,6 +115,15 @@ export default function App() {
         setScriptUrl(syncedUrl);
       }
     });
+
+    // Check if user arrived via scanned QR Code (e.g. ?verify=TMW-FC-62848628 or ?idCard=...)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const verifyParam = params.get("verify") || params.get("idCard") || params.get("ref");
+      if (verifyParam && verifyParam.trim()) {
+        setVerifyingReferenceId(verifyParam.trim());
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -165,6 +179,7 @@ export default function App() {
   const handleSingleSuccess = (record: RegistrationRecord) => {
     refreshRecords();
     setSelectedSlipRecord(record);
+    setSelectedIdCardRecord(record);
   };
 
   const handleBatchSuccess = (count: number) => {
@@ -247,6 +262,7 @@ export default function App() {
   const pageCopy = {
     individual: { eyebrow: "MEMBER INTAKE", title: "Electoral Ward Registration", detail: "National grassroots member directory" },
     ward_sheet: { eyebrow: "COORDINATOR WORKSPACE", title: "Ward Sheet Intake", detail: "Register members in batches of 20" },
+    id_card: { eyebrow: "MEMBERSHIP CREDENTIAL", title: "Printable Member ID Card", detail: "Search, preview, and print your official TMW identity card with QR code" },
     registry: { eyebrow: "RECORDS & FOLLOW-UP", title: "Electoral Ward Registry", detail: "Review, export, and sync saved records" },
     state_registry: { eyebrow: "STATE COORDINATION", title: "State Registration List", detail: "View registrations assigned to your state" },
     print_preview: { eyebrow: "DOCUMENT OUTPUT", title: "Official Ward Sheet", detail: "Review the print layout before exporting" },
@@ -295,12 +311,21 @@ export default function App() {
           />
         )}
 
+        {/* Member ID Card Search, Preview & Print Portal */}
+        {activeTab === "id_card" && (
+          <MemberIdCardPortal
+            onNavigateToRegister={() => setActiveTab("individual")}
+            initialRecord={selectedIdCardRecord}
+          />
+        )}
+
         {/* Registry Database view is only accessible when in Coordinator Mode */}
         {activeTab === "registry" && isAdminMode && (
           <SubmissionsTable
             records={records}
             onRefresh={refreshRecords}
             onViewRecord={(rec) => setSelectedSlipRecord(rec)}
+            onPrintIdCard={(rec) => setSelectedIdCardRecord(rec)}
             onDeleteRecord={handleDeleteRecord}
             onClearAll={handleClearAll}
             scriptUrl={scriptUrl}
@@ -322,6 +347,7 @@ export default function App() {
             onPinChanged={(token) => setStateCoordinator((current) =>
               current ? { ...current, token, mustChangePin: false } : current,
             )}
+            onPrintIdCard={(rec) => setSelectedIdCardRecord(rec)}
           />
         )}
 
@@ -339,9 +365,47 @@ export default function App() {
         <RegistrationSlipModal
           record={selectedSlipRecord}
           onClose={() => setSelectedSlipRecord(null)}
+          onViewIdCard={(rec) => {
+            setSelectedSlipRecord(null);
+            setSelectedIdCardRecord(rec);
+          }}
           onNewRegistration={() => {
             setSelectedSlipRecord(null);
             setActiveTab("individual");
+          }}
+        />
+      )}
+
+      {/* Standalone Member ID Card Modal */}
+      {selectedIdCardRecord && activeTab !== "id_card" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto">
+          <div className="my-6 w-full max-w-4xl">
+            <MemberIdCard
+              record={selectedIdCardRecord}
+              onClose={() => setSelectedIdCardRecord(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Scanned Live Verification Modal */}
+      {verifyingReferenceId && (
+        <MemberVerificationModal
+          referenceId={verifyingReferenceId}
+          onClose={() => {
+            setVerifyingReferenceId(null);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("verify");
+              url.searchParams.delete("idCard");
+              url.searchParams.delete("ref");
+              window.history.replaceState({}, "", url.pathname);
+            } catch {}
+          }}
+          onViewIdCard={(rec) => {
+            setVerifyingReferenceId(null);
+            setSelectedIdCardRecord(rec);
+            setActiveTab("id_card");
           }}
         />
       )}

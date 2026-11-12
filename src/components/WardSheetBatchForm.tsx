@@ -194,9 +194,6 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
             <h2 className="text-xl font-extrabold text-[#0D5C3A] mt-1">
               ELECTORAL WARD REGISTRATION SHEET (20 ROWS)
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Distinguish Executive Committee (EXCO) officers from General Grassroots members across all wards.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -495,7 +492,7 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-emerald-200" />
-                  <span>Submitting {filledCount} Rows to Google Sheets...</span>
+                  <span>Submitting {filledCount} Members...</span>
                 </>
               ) : (
                 <>
@@ -517,15 +514,8 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
           </div>
         )}
 
-        {/* Official PDF Data Protection Notice Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 text-slate-600 text-[11px] leading-relaxed">
-          <p className="font-semibold text-slate-800">
-            Data-protection notice: collect only information required for authorised TMW registration and coordination. Handle personal data securely, obtain appropriate consent, and do not use registration information for unlawful inducement or unauthorised disclosure.
-          </p>
-          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-            <span>TINUBU MOVEMENT WORLDWIDE (TMW) - Official Electoral Ward Registration Sheet</span>
-            <span>Page 1 of 1</span>
-          </div>
+        <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-center text-[11px] text-slate-400 font-medium">
+          TINUBU MOVEMENT WORLDWIDE (TMW) · Official Electoral Ward Registration Sheet
         </div>
 
       </form>

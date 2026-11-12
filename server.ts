@@ -961,6 +961,127 @@ async function startServer() {
     }
   });
 
+  // Public ID Card Search Endpoint (Searches by Reference ID, Full Name, Phone, or VIN)
+  app.get("/api/id-card/search", async (req, res) => {
+    try {
+      const query = String(req.query.query || "").trim().toLowerCase();
+      if (!query) {
+        res.json({ success: true, count: 0, records: [] });
+        return;
+      }
+
+      const { records } = await getRegistryRecords();
+      const normalizedQuery = query.replace(/[^a-z0-9]/g, "");
+
+      const matches = records.filter((r) => {
+        const ref = String(r.referenceId || r.id || "").toLowerCase();
+        const normalizedRef = ref.replace(/[^a-z0-9]/g, "");
+        const name = String(r.fullName || "").toLowerCase();
+        const phone = String(r.phone || "").replace(/[^0-9]/g, "");
+        const vin = String(r.vin || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+        return (
+          ref.includes(query) ||
+          normalizedRef.includes(normalizedQuery) ||
+          name.includes(query) ||
+          (normalizedQuery.length >= 4 && phone.includes(normalizedQuery)) ||
+          (normalizedQuery.length >= 4 && vin.includes(normalizedQuery))
+        );
+      });
+
+      // Map to safe public fields (mask sensitive bank account data for public ID lookup)
+      const safeMatches = matches.slice(0, 25).map((r) => ({
+        id: r.id,
+        referenceId: r.referenceId || r.id,
+        fullName: r.fullName,
+        state: r.state,
+        lga: r.lga,
+        ward: r.ward,
+        pollingUnit: r.pollingUnit,
+        vin: r.vin,
+        phone: r.phone,
+        isExco: Boolean(r.isExco),
+        excoLevel: r.excoLevel || "None",
+        role: r.role || (r.isExco ? "Executive Official" : "General Member"),
+        timestamp: r.timestamp,
+        status: r.status,
+      }));
+
+      res.json({
+        success: true,
+        count: safeMatches.length,
+        records: safeMatches,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error searching member ID records.";
+      res.status(500).json({ success: false, message });
+    }
+  });
+
+  // Public Member QR Code Verification Endpoint
+  app.get("/api/id-card/verify/:id", async (req, res) => {
+    try {
+      const rawId = String(req.params.id || "").trim().toLowerCase();
+      if (!rawId) {
+        res.status(400).json({ success: false, message: "Reference ID is required." });
+        return;
+      }
+
+      const normalizedTarget = rawId.replace(/[^a-z0-9]/g, "");
+      const { records } = await getRegistryRecords();
+
+      const found = records.find((r) => {
+        const ref = String(r.referenceId || "").toLowerCase();
+        const id = String(r.id || "").toLowerCase();
+        const normalizedRef = ref.replace(/[^a-z0-9]/g, "");
+        const normalizedId = id.replace(/[^a-z0-9]/g, "");
+
+        return (
+          ref === rawId ||
+          id === rawId ||
+          normalizedRef === normalizedTarget ||
+          normalizedId === normalizedTarget
+        );
+      });
+
+      if (!found) {
+        res.status(404).json({
+          success: false,
+          verified: false,
+          message: "No registered member found matching this reference code.",
+        });
+        return;
+      }
+
+      const member = {
+        id: found.id,
+        referenceId: found.referenceId || found.id,
+        fullName: found.fullName,
+        state: found.state,
+        lga: found.lga,
+        ward: found.ward,
+        pollingUnit: found.pollingUnit,
+        vin: found.vin,
+        phone: found.phone,
+        isExco: Boolean(found.isExco),
+        excoLevel: found.excoLevel || "None",
+        role: found.role || (found.isExco ? "Executive Committee Officer" : "General Member"),
+        timestamp: found.timestamp,
+        status: found.status,
+        verifiedAt: new Date().toISOString(),
+      };
+
+      res.json({
+        success: true,
+        verified: true,
+        member,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Verification server error.";
+      res.status(500).json({ success: false, message });
+    }
+  });
+
   app.post("/api/submit-registration", async (req, res) => {
     try {
       const record = req.body;

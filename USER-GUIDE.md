@@ -15,10 +15,32 @@ The main navigation offers:
 
 - **Single Member Form** — register one person.
 - **Ward Sheet (Batch 20-Rows)** — enter multiple members for the same ward and submit them together.
+- **Member ID Card** — search for any registered member by name or Personal ID, preview the official badge, affix passport photo, and print.
 - **State Coordinators** — open a state-specific coordinator login.
 - **Print Official Form (PDF)** — prepare a printable blank form.
 
 The coordinator login for the national directory is separate from the state coordinator login and appears in the page footer as **Coordinator Login**.
+
+## Print member ID card & QR verification
+
+Every registered member can generate and print an official TMW Membership Identity Card affiliated with the All Progressives Congress (APC).
+
+### Finding and printing an ID card
+1. Select **Member ID Card** in the top navigation.
+2. In the search box, enter the member's **Full Name** (e.g. *Dogara Conscience*) or **Personal ID** (e.g. *TMW-FC-62848628*), or phone number / VIN.
+3. Select **Find Card** or choose from the search results.
+4. The high-resolution card preview will appear with both **Front** and **Back** faces.
+5. **Passport Photograph:** Click or tap the photo placeholder to upload a digital passport photo from your computer or phone.
+6. Select **Print ID Card (Front & Back)** to send the card directly to your printer or save as a PDF formatted for standard cardstock or paper badge lamination.
+
+### Immediate ID card generation for new members
+When you complete and submit a new registration via the **Single Member Form**, the confirmation screen immediately generates the member's official ID card. You can click **View & Print ID Card** right on the spot without needing to search.
+
+### Live smartphone QR code verification
+Each member ID card features a cryptographically unique QR code:
+1. Anyone (security, electoral officers, polling agents) can scan the QR code using any smartphone camera.
+2. Scanning instantly opens the official **TMW Member Verification Portal**.
+3. The portal displays a green **"BONA FIDE REGISTERED MEMBER"** seal confirming the member's Full Name, Personal ID, State, LGA, Ward, Polling Unit, and voter card details directly from the national registry.
 
 ## Register one member
 

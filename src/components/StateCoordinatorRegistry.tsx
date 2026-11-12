@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { KeyRound, RefreshCw, Search, ShieldAlert, Users, X } from "lucide-react";
+import { KeyRound, RefreshCw, Search, ShieldAlert, Users, X, CreditCard } from "lucide-react";
 import { RegistrationRecord } from "../types";
 import { changeStateCoordinatorPin } from "../services/googleSheetsService";
 
@@ -12,6 +12,7 @@ interface StateCoordinatorRegistryProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   onPinChanged: (token: string) => void;
+  onPrintIdCard?: (record: RegistrationRecord) => void;
 }
 
 export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> = ({
@@ -23,6 +24,7 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
   onRefresh,
   isRefreshing,
   onPinChanged,
+  onPrintIdCard,
 }) => {
   const [search, setSearch] = useState("");
   const [isChangingPin, setIsChangingPin] = useState(mustChangePin);
@@ -237,6 +239,7 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
                 <th className="px-4 py-3">Ward</th>
                 <th className="px-4 py-3">VIN</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3 text-right">Card</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -249,6 +252,19 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
                   <td className="whitespace-nowrap px-4 py-3">{record.ward}</td>
                   <td className="whitespace-nowrap px-4 py-3">{record.vin}</td>
                   <td className="whitespace-nowrap px-4 py-3">{record.role || "Member"}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
+                    {onPrintIdCard && (
+                      <button
+                        type="button"
+                        onClick={() => onPrintIdCard(record)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded border border-emerald-200 transition-colors"
+                        title="Print ID Card"
+                      >
+                        <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>ID Card</span>
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
