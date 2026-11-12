@@ -245,8 +245,26 @@ export const StateCoordinatorRegistry: React.FC<StateCoordinatorRegistryProps> =
             <tbody className="divide-y divide-slate-100">
               {filteredRecords.map((record) => (
                 <tr key={record.id} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap px-4 py-3 font-mono font-semibold text-emerald-800">{record.referenceId}</td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">{record.fullName}</td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => onPrintIdCard && onPrintIdCard(record)}
+                      className="font-mono font-bold text-emerald-800 hover:text-emerald-950 hover:underline cursor-pointer text-left block"
+                      title="Click to view & print Member ID Card"
+                    >
+                      {record.referenceId}
+                    </button>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => onPrintIdCard && onPrintIdCard(record)}
+                      className="font-bold text-slate-900 hover:text-emerald-800 hover:underline cursor-pointer text-left block"
+                      title="Click to view & print Member ID Card"
+                    >
+                      {record.fullName}
+                    </button>
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3">{record.phone}</td>
                   <td className="whitespace-nowrap px-4 py-3">{record.lga}</td>
                   <td className="whitespace-nowrap px-4 py-3">{record.ward}</td>

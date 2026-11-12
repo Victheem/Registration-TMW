@@ -210,7 +210,11 @@ export const SingleRegistrationForm: React.FC<SingleRegistrationFormProps> = ({
 
       onSuccess(record);
 
-      // Reset member-specific fields, retaining State, LGA, Ward for fast repetitive entries
+      try {
+        const stored = JSON.parse(localStorage.getItem("tmw_local_members") || "[]");
+        const updated = [record, ...stored.filter((r: any) => r.id !== record.id)].slice(0, 50);
+        localStorage.setItem("tmw_local_members", JSON.stringify(updated));
+      } catch {}
       setFullName("");
       setPhone("");
       setVin("");

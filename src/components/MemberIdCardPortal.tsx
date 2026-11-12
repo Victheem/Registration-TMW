@@ -23,7 +23,8 @@ import {
   ArrowRight,
   UserPlus,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from "lucide-react";
 
 interface MemberIdCardPortalProps {
@@ -51,7 +52,14 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
     }
   }, [initialRecord]);
 
-  // Execute search against backend API
+  // Preload live records silently in background when component mounts for lightning-fast search
+  useEffect(() => {
+    import("../services/idCardSearchService").then((mod) => {
+      mod.fetchLiveSheetRecords().catch(() => {});
+    });
+  }, []);
+
+  // Execute search against backend API with client-side Supabase, Google Sheets, and local fallbacks
   const handleSearch = async (queryToSearch?: string) => {
     const term = (queryToSearch ?? searchQuery).trim();
     if (!term) {
@@ -65,18 +73,19 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
     setHasSearched(true);
 
     try {
-      const response = await fetch(`/api/id-card/search?query=${encodeURIComponent(term)}`);
-      const data = await response.json();
+      const { searchMemberRegistry } = await import("../services/idCardSearchService");
+      const searchResult = await searchMemberRegistry(term);
 
-      if (data.success && Array.isArray(data.records)) {
-        setResults(data.records);
-        // If exact single match found, automatically select it for easy preview
-        if (data.records.length === 1) {
-          setSelectedRecord(data.records[0]);
+      if (searchResult.records.length > 0) {
+        setResults(searchResult.records);
+        if (searchResult.records.length === 1) {
+          setSelectedRecord(searchResult.records[0]);
         }
       } else {
         setResults([]);
-        setErrorMessage(data.message || "No matching members found.");
+        if (searchResult.message && !searchResult.success) {
+          setErrorMessage(searchResult.message);
+        }
       }
     } catch (err: any) {
       setResults([]);
@@ -198,6 +207,23 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
                 Abdul Kareem
               </button>
             </div>
+
+            {/* Error or diagnosis message if search failed */}
+            {errorMessage && (
+              <div className="mt-3.5 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSearch()}
+                  className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded text-[11px] font-bold text-amber-900 shrink-0 cursor-pointer transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

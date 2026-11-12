@@ -972,39 +972,46 @@ async function startServer() {
 
       const { records } = await getRegistryRecords();
       const normalizedQuery = query.replace(/[^a-z0-9]/g, "");
+      const queryTokens = query.split(/\s+/).filter(Boolean);
+      const digitsQuery = query.replace(/\D/g, "");
 
       const matches = records.filter((r) => {
-        const ref = String(r.referenceId || r.id || "").toLowerCase();
+        const ref = String(r.referenceId || r.reference_id || r.id || "").toLowerCase();
         const normalizedRef = ref.replace(/[^a-z0-9]/g, "");
-        const name = String(r.fullName || "").toLowerCase();
+        const name = String(r.fullName || r.full_name || r.names || "").toLowerCase();
         const phone = String(r.phone || "").replace(/[^0-9]/g, "");
         const vin = String(r.vin || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+        const tokenMatch = queryTokens.length > 0 && queryTokens.every((t) => name.includes(t));
+        const phoneMatch = digitsQuery.length >= 4 && phone.includes(digitsQuery);
+        const vinMatch = normalizedQuery.length >= 4 && vin.includes(normalizedQuery);
 
         return (
           ref.includes(query) ||
           normalizedRef.includes(normalizedQuery) ||
           name.includes(query) ||
-          (normalizedQuery.length >= 4 && phone.includes(normalizedQuery)) ||
-          (normalizedQuery.length >= 4 && vin.includes(normalizedQuery))
+          tokenMatch ||
+          phoneMatch ||
+          vinMatch
         );
       });
 
       // Map to safe public fields (mask sensitive bank account data for public ID lookup)
       const safeMatches = matches.slice(0, 25).map((r) => ({
-        id: r.id,
-        referenceId: r.referenceId || r.id,
-        fullName: r.fullName,
-        state: r.state,
-        lga: r.lga,
-        ward: r.ward,
-        pollingUnit: r.pollingUnit,
-        vin: r.vin,
-        phone: r.phone,
-        isExco: Boolean(r.isExco),
-        excoLevel: r.excoLevel || "None",
+        id: r.id || r.referenceId || r.reference_id,
+        referenceId: r.referenceId || r.reference_id || r.id,
+        fullName: r.fullName || r.full_name || r.names,
+        state: r.state || "",
+        lga: r.lga || "",
+        ward: r.ward || "",
+        pollingUnit: r.pollingUnit || r.polling_unit || "",
+        vin: r.vin || "",
+        phone: r.phone || "",
+        isExco: r.isExco !== undefined ? Boolean(r.isExco) : (r.is_exco !== undefined ? Boolean(r.is_exco) : false),
+        excoLevel: r.excoLevel || r.exco_level || "None",
         role: r.role || (r.isExco ? "Executive Official" : "General Member"),
-        timestamp: r.timestamp,
-        status: r.status,
+        timestamp: r.timestamp || r.created_at || new Date().toISOString(),
+        status: r.status || "synced",
       }));
 
       res.json({

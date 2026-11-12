@@ -47,15 +47,15 @@ export const MemberVerificationModal: React.FC<MemberVerificationModalProps> = (
 
     const fetchVerification = async () => {
       try {
-        const response = await fetch(`/api/id-card/verify/${encodeURIComponent(referenceId)}`);
-        const data = await response.json();
+        const { verifyMemberCredential } = await import("../services/idCardSearchService");
+        const res = await verifyMemberCredential(referenceId);
 
         if (!isMounted) return;
 
-        if (data.success && data.member) {
-          setMember(data.member);
+        if (res.success && res.member) {
+          setMember(res.member);
         } else {
-          setError(data.message || "No verified member record found for this reference code.");
+          setError(res.message || "No verified member record found for this reference code.");
         }
       } catch (err: any) {
         if (!isMounted) return;

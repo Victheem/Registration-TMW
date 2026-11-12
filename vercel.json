@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/id-card/verify/:id*",
+      "destination": "/api/id-card/verify/[id]"
+    },
+    {
+      "source": "/api/id-card/search",
+      "destination": "/api/id-card/search"
+    },
+    {
+      "source": "/api/search",
+      "destination": "/api/id-card/search"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/[...path]"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

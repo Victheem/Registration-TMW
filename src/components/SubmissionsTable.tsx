@@ -290,13 +290,27 @@ export const SubmissionsTable: React.FC<SubmissionsTableProps> = ({
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                       {/* Ref ID */}
-                      <td className="py-2.5 px-4 font-mono font-semibold text-emerald-800 whitespace-nowrap">
-                        {item.referenceId}
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => onPrintIdCard ? onPrintIdCard(item) : onViewRecord(item)}
+                          className="font-mono font-bold text-emerald-800 hover:text-emerald-950 hover:underline cursor-pointer text-left block"
+                          title="Click to view & print Member ID Card"
+                        >
+                          {item.referenceId}
+                        </button>
                       </td>
 
                       {/* Full Name */}
-                      <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                        {item.fullName}
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => onPrintIdCard ? onPrintIdCard(item) : onViewRecord(item)}
+                          className="font-bold text-slate-900 hover:text-emerald-800 hover:underline cursor-pointer text-left block"
+                          title="Click to view & print Member ID Card"
+                        >
+                          {item.fullName}
+                        </button>
                       </td>
 
                       {/* Role & EXCO Distinction */}

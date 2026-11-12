@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   CoordinatorConfigError,
   CoordinatorValidationError,
@@ -14,6 +15,17 @@ const SCRIPT_URL =
   process.env.GOOGLE_APPS_SCRIPT_URL ||
   process.env.VITE_GOOGLE_APPS_SCRIPT_URL ||
   "https://script.google.com/macros/s/AKfycbxd2EXUybiObFJm2QtvWQDVXI_DOQxn_1i4hhCRGQXHq0qxK-UpBAHYsLVNbXvBNYU5-Q/exec";
+
+function getSupabaseClient(): SupabaseClient | null {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
 
 type ApiRequest = IncomingMessage & {
   body?: unknown;
@@ -256,36 +268,173 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
       return;
     }
 
-    if (endpoint === "id-card/search" && req.method === "GET") {
+function normalizeSheetRecord(r: Record<string, any>) {
+  const fullName = String(
+    r.fullName ||
+    r.full_name ||
+    r["Full Name"] ||
+    r["Full name"] ||
+    r.names ||
+    r.Names ||
+    r.name ||
+    "",
+  ).trim();
+
+  const refId = String(
+    r.referenceId ||
+    r.reference_id ||
+    r["Reference ID"] ||
+    r["Reference Id"] ||
+    r.refId ||
+    r.id ||
+    "",
+  ).trim();
+
+  const phone = String(r.phone || r["Phone"] || r.phoneNumber || "").trim();
+  const vin = String(r.vin || r["VIN"] || r.voterCard || "").trim();
+  const state = String(r.state || r["State"] || "").trim();
+  const lga = String(r.lga || r["LGA"] || "").trim();
+  const ward = String(r.ward || r["Ward"] || "").trim();
+  const pollingUnit = String(r.pollingUnit || r.polling_unit || r["Polling Unit"] || "").trim();
+  const isExco = r.isExco !== undefined ? Boolean(r.isExco) : (r.is_exco !== undefined ? Boolean(r.is_exco) : false);
+  const excoLevel = String(r.excoLevel || r.exco_level || (isExco ? "Ward" : "None")).trim();
+  const role = String(r.role || r["Role"] || (isExco ? "Executive Official" : "General Member")).trim();
+  const timestamp = r.timestamp || r.created_at || new Date().toISOString();
+  const status = r.status || "synced";
+
+  return {
+    id: r.id || (refId ? `tmw-${refId.toLowerCase().replace(/[^a-z0-9]/g, "-")}` : "unknown"),
+    referenceId: refId,
+    fullName,
+    phone,
+    vin,
+    state,
+    lga,
+    ward,
+    pollingUnit,
+    isExco,
+    excoLevel,
+    role,
+    timestamp,
+    status,
+  };
+}
+
+async function getAllRegistryRecords(): Promise<Array<Record<string, any>>> {
+  const recordsMap = new Map<string, any>();
+
+  // 1. Check Supabase (if configured via env vars)
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("tmw_registrations")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          const rec = normalizeSheetRecord(row);
+          const key = (rec.referenceId || rec.id).toLowerCase();
+          if (key) recordsMap.set(key, rec);
+        }
+      }
+    } catch (sbErr) {
+      console.warn("Vercel Supabase query notice:", sbErr);
+    }
+  }
+
+  // 2. Check Google Sheets
+  try {
+    const sheetRecords = await getSheetRecords();
+    if (Array.isArray(sheetRecords)) {
+      for (const row of sheetRecords) {
+        if (row && typeof row === "object") {
+          const rec = normalizeSheetRecord(row as Record<string, any>);
+          const key = (rec.referenceId || rec.id).toLowerCase();
+          if (key && !recordsMap.has(key)) {
+            recordsMap.set(key, rec);
+          }
+        }
+      }
+    }
+  } catch (sheetErr) {
+    console.warn("Vercel Google Sheets query notice:", sheetErr);
+  }
+
+  // 3. Fallback to bundled data if present
+  if (recordsMap.size === 0) {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const localFile = path.resolve(process.cwd(), "data", "registrations.json");
+      if (fs.existsSync(localFile)) {
+        const raw = fs.readFileSync(localFile, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            const rec = normalizeSheetRecord(item);
+            const key = (rec.referenceId || rec.id).toLowerCase();
+            if (key) recordsMap.set(key, rec);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return Array.from(recordsMap.values());
+}
+
+    // Flexible path detection for Vercel functions (handles both /api/id-card/search and /search)
+    const isIdCardSearch =
+      endpoint === "id-card/search" ||
+      pathname.endsWith("id-card/search") ||
+      (pathname.endsWith("/search") && !pathname.includes("coordinator")) ||
+      endpoint === "search";
+
+    const isIdCardVerify =
+      endpoint.startsWith("id-card/verify") ||
+      pathname.includes("/id-card/verify") ||
+      endpoint.startsWith("verify");
+
+    if (isIdCardSearch && req.method === "GET") {
       const url = new URL(req.url || "/", "http://localhost");
       const query = String(url.searchParams.get("query") || "").trim().toLowerCase();
       if (!query) {
         sendJson(res, 200, { success: true, count: 0, records: [] });
         return;
       }
-      const records = (await getSheetRecords()) as Array<Record<string, any>>;
+
+      const records = await getAllRegistryRecords();
       const normalizedQuery = query.replace(/[^a-z0-9]/g, "");
+      const queryTokens = query.split(/\s+/).filter(Boolean);
+      const digitsQuery = query.replace(/\D/g, "");
 
       const matches = records.filter((r) => {
         const ref = String(r.referenceId || r.id || "").toLowerCase();
         const normalizedRef = ref.replace(/[^a-z0-9]/g, "");
-        const name = String(r.fullName || r.names || "").toLowerCase();
+        const name = String(r.fullName || "").toLowerCase();
         const phone = String(r.phone || "").replace(/[^0-9]/g, "");
         const vin = String(r.vin || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+        const tokenMatch = queryTokens.length > 0 && queryTokens.every((t) => name.includes(t));
+        const phoneMatch = digitsQuery.length >= 4 && phone.includes(digitsQuery);
+        const vinMatch = normalizedQuery.length >= 4 && vin.includes(normalizedQuery);
 
         return (
           ref.includes(query) ||
           normalizedRef.includes(normalizedQuery) ||
           name.includes(query) ||
-          (normalizedQuery.length >= 4 && phone.includes(normalizedQuery)) ||
-          (normalizedQuery.length >= 4 && vin.includes(normalizedQuery))
+          tokenMatch ||
+          phoneMatch ||
+          vinMatch
         );
       });
 
       const safeMatches = matches.slice(0, 25).map((r) => ({
         id: r.id || r.referenceId,
         referenceId: r.referenceId || r.id,
-        fullName: r.fullName || r.names,
+        fullName: r.fullName,
         state: r.state || "",
         lga: r.lga || "",
         ward: r.ward || "",
@@ -303,10 +452,11 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
       return;
     }
 
-    if (endpoint.startsWith("id-card/verify/") && req.method === "GET") {
-      const rawId = decodeURIComponent(endpoint.replace(/^id-card\/verify\//, "").trim()).toLowerCase();
+    if (isIdCardVerify && req.method === "GET") {
+      const verifyIdPart = pathname.split("/verify/")[1] || pathname.split("/verify")[1] || "";
+      const rawId = decodeURIComponent(verifyIdPart.replace(/^\/+/, "").trim()).toLowerCase();
       const normalizedTarget = rawId.replace(/[^a-z0-9]/g, "");
-      const records = (await getSheetRecords()) as Array<Record<string, any>>;
+      const records = await getAllRegistryRecords();
 
       const found = records.find((r) => {
         const ref = String(r.referenceId || "").toLowerCase();
@@ -337,7 +487,7 @@ export default async function handler(req: ApiRequest, res: ServerResponse): Pro
         member: {
           id: found.id || found.referenceId,
           referenceId: found.referenceId || found.id,
-          fullName: found.fullName || found.names,
+          fullName: found.fullName,
           state: found.state || "",
           lga: found.lga || "",
           ward: found.ward || "",
