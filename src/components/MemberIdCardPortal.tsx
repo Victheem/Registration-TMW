@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { RegistrationRecord } from "../types";
+import { fetchLiveSheetRecords, searchMemberRegistry } from "../services/idCardSearchService";
 import { MemberIdCard } from "./MemberIdCard";
 import { TMWLogo } from "./TMWLogo";
 import { APCLogo } from "./APCLogo";
@@ -54,9 +55,7 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
 
   // Preload live records silently in background when component mounts for lightning-fast search
   useEffect(() => {
-    import("../services/idCardSearchService").then((mod) => {
-      mod.fetchLiveSheetRecords().catch(() => {});
-    });
+    fetchLiveSheetRecords().catch(() => {});
   }, []);
 
   // Execute search against backend API with client-side Supabase, Google Sheets, and local fallbacks
@@ -73,7 +72,6 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
     setHasSearched(true);
 
     try {
-      const { searchMemberRegistry } = await import("../services/idCardSearchService");
       const searchResult = await searchMemberRegistry(term);
 
       if (searchResult.records.length > 0) {
@@ -89,7 +87,11 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
       }
     } catch (err: any) {
       setResults([]);
-      setErrorMessage("Network error while searching registry. Please try again.");
+      setErrorMessage(
+        err?.message
+          ? `Search could not complete: ${err.message}`
+          : "Network error while searching registry. Please try again."
+      );
     } finally {
       setIsSearching(false);
     }
@@ -108,9 +110,9 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 print:max-w-none print:space-y-0">
       {/* Banner / Header */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print:hidden">
         <div className="bg-gradient-to-r from-[#0D5C3A] via-[#09432A] to-[#042818] p-6 text-white relative">
           {/* Subtle logo emblem in background */}
           <div className="absolute right-4 -bottom-6 opacity-10 pointer-events-none select-none">
@@ -230,8 +232,8 @@ export const MemberIdCardPortal: React.FC<MemberIdCardPortalProps> = ({
 
       {/* If a card is selected, show the interactive ID Card preview */}
       {selectedRecord ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white px-5 py-3 rounded-xl border border-slate-200 shadow-xs">
+        <div className="space-y-4 print:space-y-0">
+          <div className="flex items-center justify-between bg-white px-5 py-3 rounded-xl border border-slate-200 shadow-xs print:hidden">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               <div>

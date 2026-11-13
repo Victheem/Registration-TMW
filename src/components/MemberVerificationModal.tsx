@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { RegistrationRecord } from "../types";
+import { verifyMemberCredential } from "../services/idCardSearchService";
 import { TMWLogo } from "./TMWLogo";
 import { APCLogo } from "./APCLogo";
 import { 
@@ -47,7 +48,6 @@ export const MemberVerificationModal: React.FC<MemberVerificationModalProps> = (
 
     const fetchVerification = async () => {
       try {
-        const { verifyMemberCredential } = await import("../services/idCardSearchService");
         const res = await verifyMemberCredential(referenceId);
 
         if (!isMounted) return;

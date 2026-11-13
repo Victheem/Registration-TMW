@@ -41,20 +41,38 @@
     print-color-adjust: exact !important;
   }
 
+  html,
   body {
     background-color: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 
   .print\:hidden {
     display: none !important;
   }
 
+  #tmw-id-card-print-area {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 18px !important;
+    justify-items: center !important;
+    width: 100% !important;
+    max-width: 110mm !important;
+    margin: 10px auto !important;
+  }
+
   #tmw-id-card-front,
   #tmw-id-card-back {
+    display: flex !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    max-width: 86mm !important;
+    width: 100% !important;
+    max-width: 105mm !important;
+    margin: 0 auto !important;
     box-shadow: none !important;
   }
 }

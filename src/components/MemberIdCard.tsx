@@ -109,7 +109,7 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
     : "Nov 2026";
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-w-4xl w-full mx-auto">
+    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-w-4xl w-full mx-auto print:shadow-none print:border-0 print:rounded-none print:bg-transparent print:max-w-none">
       {/* Top Controller Bar (Hidden when printing) */}
       <div className="bg-gradient-to-r from-[#0D5C3A] via-[#09432A] to-[#042818] text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-2.5">
@@ -205,24 +205,28 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
       </div>
 
       {/* Printable Canvas Section */}
-      <div className="p-4 sm:p-8 bg-slate-100/70 flex flex-col items-center justify-center print:p-0 print:bg-white">
+      <div className="p-4 sm:p-8 bg-slate-100/70 flex flex-col items-center justify-center print:p-0 print:bg-white print:block">
         
         {/* Container for Cards */}
-        <div className={`grid gap-6 w-full max-w-3xl ${
-          activeSide === "both" ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 max-w-md"
-        } print:grid-cols-2 print:gap-4 print:max-w-none`}>
+        <div
+          id="tmw-id-card-print-area"
+          className={`grid gap-6 w-full max-w-3xl ${
+            activeSide === "both" ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 max-w-md"
+          } print:grid print:grid-cols-1 print:gap-4 print:max-w-none print:w-full`}
+        >
 
           {/* ========================================================================= */}
           {/* FRONT OF ID CARD */}
           {/* ========================================================================= */}
-          {(activeSide === "both" || activeSide === "front") && (
-            <div 
-              id="tmw-id-card-front"
-              className="relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-2 border-emerald-800 overflow-hidden flex flex-col justify-between print:shadow-none print:border-2 print:border-emerald-900 print:rounded-xl print:break-inside-avoid select-none"
-              style={{
-                boxShadow: "0 10px 25px -5px rgba(13, 92, 58, 0.15), 0 8px 10px -6px rgba(13, 92, 58, 0.1)"
-              }}
-            >
+          <div 
+            id="tmw-id-card-front"
+            className={`relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-2 border-emerald-800 overflow-hidden flex-col justify-between print:flex print:shadow-none print:border-2 print:border-emerald-900 print:rounded-xl print:break-inside-avoid select-none ${
+              activeSide === "back" ? "hidden" : "flex"
+            }`}
+            style={{
+              boxShadow: "0 10px 25px -5px rgba(13, 92, 58, 0.15), 0 8px 10px -6px rgba(13, 92, 58, 0.1)"
+            }}
+          >
               {/* Background Guilloche Security Texture & Subtle Gradient */}
               <div 
                 className="absolute inset-0 pointer-events-none opacity-5 bg-[radial-gradient(#0D5C3A_1px,transparent_1px)] [background-size:10px_10px]"
@@ -406,20 +410,20 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                 </span>
               </div>
             </div>
-          )}
 
 
           {/* ========================================================================= */}
           {/* BACK OF ID CARD */}
           {/* ========================================================================= */}
-          {(activeSide === "both" || activeSide === "back") && (
-            <div 
-              id="tmw-id-card-back"
-              className="relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-2 border-emerald-800 overflow-hidden flex flex-col justify-between print:shadow-none print:border-2 print:border-emerald-900 print:rounded-xl print:break-inside-avoid select-none"
-              style={{
-                boxShadow: "0 10px 25px -5px rgba(13, 92, 58, 0.15), 0 8px 10px -6px rgba(13, 92, 58, 0.1)"
-              }}
-            >
+          <div 
+            id="tmw-id-card-back"
+            className={`relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-2 border-emerald-800 overflow-hidden flex-col justify-between print:flex print:shadow-none print:border-2 print:border-emerald-900 print:rounded-xl print:break-inside-avoid select-none ${
+              activeSide === "front" ? "hidden" : "flex"
+            }`}
+            style={{
+              boxShadow: "0 10px 25px -5px rgba(13, 92, 58, 0.15), 0 8px 10px -6px rgba(13, 92, 58, 0.1)"
+            }}
+          >
               {/* Background watermark */}
               <div className="absolute inset-0 pointer-events-none opacity-[0.04] flex items-center justify-center">
                 <TMWLogo size={200} />
@@ -547,7 +551,6 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                 </span>
               </div>
             </div>
-          )}
 
         </div>
 

@@ -269,7 +269,7 @@ export default function App() {
   }[activeTab];
 
   return (
-    <div className="app-shell min-h-screen flex flex-col font-sans text-slate-900">
+    <div className="app-shell min-h-screen flex flex-col font-sans text-slate-900 print:min-h-0 print:bg-white print:block">
       {/* Top Brand Header */}
       <Header
         activeTab={activeTab}
@@ -284,8 +284,10 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-7 sm:py-9">
-        <div className="mb-6 flex flex-col gap-3 border-b border-emerald-950/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <main className={`flex-1 max-w-7xl w-full mx-auto px-4 py-7 sm:py-9 print:p-0 print:m-0 print:max-w-none ${
+        (selectedIdCardRecord && activeTab !== "id_card") || selectedSlipRecord ? "print:hidden" : ""
+      }`}>
+        <div className="mb-6 flex flex-col gap-3 border-b border-emerald-950/10 pb-5 sm:flex-row sm:items-end sm:justify-between print:hidden">
           <div>
             <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-red-700">{pageCopy.eyebrow}</p>
             <h2 className="mt-1 text-2xl font-extrabold leading-tight text-emerald-950 sm:text-3xl">{pageCopy.title}</h2>
@@ -378,8 +380,8 @@ export default function App() {
 
       {/* Standalone Member ID Card Modal */}
       {selectedIdCardRecord && activeTab !== "id_card" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto">
-          <div className="my-6 w-full max-w-4xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto print:static print:inset-auto print:p-0 print:bg-white print:block print:overflow-visible">
+          <div className="my-6 w-full max-w-4xl print:my-0 print:max-w-none">
             <MemberIdCard
               record={selectedIdCardRecord}
               onClose={() => setSelectedIdCardRecord(null)}

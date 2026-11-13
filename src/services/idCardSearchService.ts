@@ -9,14 +9,15 @@
  * Tier 4: LocalStorage cached registrations from current device
  */
 
+import { createClient } from "@supabase/supabase-js";
 import { RegistrationRecord, ExcoLevel } from "../types";
 
 export const PUBLIC_APPS_SCRIPT_URL = 
   "https://script.google.com/macros/s/AKfycbxd2EXUybiObFJm2QtvWQDVXI_DOQxn_1i4hhCRGQXHq0qxK-UpBAHYsLVNbXvBNYU5-Q/exec";
 
-// In-memory cache to make repeated searches instantaneous (0ms)
+// In-memory cache & deduplicated in-flight promise
 let cachedRecords: RegistrationRecord[] | null = null;
-let isPreloading = false;
+let inFlightFetch: Promise<RegistrationRecord[]> | null = null;
 
 /**
  * Normalizes any raw record object from Google Sheets, Supabase, or local storage
@@ -90,33 +91,43 @@ export async function fetchLiveSheetRecords(): Promise<RegistrationRecord[]> {
     }
   } catch {}
 
-  try {
-    const res = await fetch(`${PUBLIC_APPS_SCRIPT_URL}?action=read_records`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      redirect: "follow",
-    });
-
-    if (!res.ok) {
-      throw new Error(`Google Apps Script responded with HTTP ${res.status}`);
-    }
-
-    const json = await res.json();
-    if (json && Array.isArray(json.records)) {
-      const normalized = json.records.map(normalizeRecord);
-      cachedRecords = normalized;
-
-      try {
-        sessionStorage.setItem("tmw_cached_sheet_records", JSON.stringify(normalized.slice(0, 3000)));
-      } catch {}
-
-      return normalized;
-    }
-  } catch (err) {
-    console.warn("Direct Google Apps Script fetch warning:", err);
+  if (inFlightFetch) {
+    return inFlightFetch;
   }
 
-  return cachedRecords || [];
+  inFlightFetch = (async () => {
+    try {
+      const res = await fetch(`${PUBLIC_APPS_SCRIPT_URL}?action=read_records`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        redirect: "follow",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Google Apps Script responded with HTTP ${res.status}`);
+      }
+
+      const json = await res.json();
+      if (json && Array.isArray(json.records)) {
+        const normalized = json.records.map(normalizeRecord);
+        cachedRecords = normalized;
+
+        try {
+          sessionStorage.setItem("tmw_cached_sheet_records", JSON.stringify(normalized.slice(0, 3000)));
+        } catch {}
+
+        return normalized;
+      }
+    } catch (err) {
+      console.warn("Direct Google Apps Script fetch warning:", err);
+    } finally {
+      inFlightFetch = null;
+    }
+
+    return cachedRecords || [];
+  })();
+
+  return inFlightFetch;
 }
 
 /**
@@ -204,20 +215,25 @@ export async function searchMemberRegistry(query: string): Promise<{
     }
   } catch {}
 
+  let hadLiveSource = false;
+
   // 1. Try serverless endpoint first
   try {
     const apiRes = await fetch(`/api/id-card/search?query=${encodeURIComponent(term)}`);
     if (apiRes.ok) {
       const data = await apiRes.json();
-      if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
-        return {
-          success: true,
-          records: data.records.map(normalizeRecord),
-          source: "serverless_api"
-        };
+      if (data && data.success && Array.isArray(data.records)) {
+        hadLiveSource = true;
+        if (data.records.length > 0) {
+          return {
+            success: true,
+            records: data.records.map(normalizeRecord),
+            source: "serverless_api"
+          };
+        }
       }
     }
-  } catch (apiErr) {
+  } catch {
     console.info("Serverless search endpoint bypassed/unavailable, using direct live fallback.");
   }
 
@@ -225,6 +241,7 @@ export async function searchMemberRegistry(query: string): Promise<{
   try {
     const liveRecords = await fetchLiveSheetRecords();
     if (liveRecords.length > 0) {
+      hadLiveSource = true;
       // Merge with local recent
       const allPool = [...localRecent, ...liveRecords];
       // Deduplicate by referenceId
@@ -256,7 +273,6 @@ export async function searchMemberRegistry(query: string): Promise<{
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (supabaseUrl && supabaseKey) {
     try {
-      const { createClient } = await import("@supabase/supabase-js");
       const sb = createClient(supabaseUrl, supabaseKey);
       const { data: sbData, error: sbError } = await sb
         .from("tmw_registrations")
@@ -264,12 +280,15 @@ export async function searchMemberRegistry(query: string): Promise<{
         .or(`reference_id.ilike.%${term}%,full_name.ilike.%${term}%,phone.ilike.%${term}%,vin.ilike.%${term}%`)
         .limit(30);
 
-      if (!sbError && Array.isArray(sbData) && sbData.length > 0) {
-        return {
-          success: true,
-          records: sbData.map(normalizeRecord),
-          source: "supabase_client"
-        };
+      if (!sbError && Array.isArray(sbData)) {
+        hadLiveSource = true;
+        if (sbData.length > 0) {
+          return {
+            success: true,
+            records: sbData.map(normalizeRecord),
+            source: "supabase_client"
+          };
+        }
       }
     } catch {}
   }
@@ -284,6 +303,14 @@ export async function searchMemberRegistry(query: string): Promise<{
         source: "local_cache"
       };
     }
+  }
+
+  if (!hadLiveSource) {
+    return {
+      success: false,
+      records: [],
+      message: "Unable to reach the live registry right now. Please check your internet connection and click Retry."
+    };
   }
 
   return {
