@@ -647,16 +647,30 @@ export async function submitBatchWardSheet(
 
   // Map into RegistrationRecords including role and EXCO status
   const mappedRecords: RegistrationRecord[] = validRows.map((row, idx) => {
+    const isNonExco = Boolean(row.role && row.role.toUpperCase().includes("NON-EXCO"));
     const isExco = row.isExco ?? (
-      Boolean(row.role && (
+      !isNonExco && Boolean(row.role && (
         row.role.includes("EXCO") ||
         row.role.includes("Coordinator") ||
         row.role.includes("Lead") ||
         row.role.includes("Secretary") ||
-        row.role.includes("Leader")
+        row.role.includes("Leader") ||
+        row.role.includes("Treasurer") ||
+        row.role.includes("Adviser") ||
+        row.role.includes("Auditor") ||
+        row.role.includes("Director")
       ))
     );
     const role = row.role?.trim() || (isExco ? "Ward Coordinators" : "General Member (Non-EXCO)");
+    const inferredLevel = !isExco
+      ? "None"
+      : role.includes("National") || role.includes("Director General")
+        ? "National"
+        : role.includes("State")
+          ? "State"
+          : role.includes("LGA")
+            ? "LGA"
+            : "Ward";
     return {
       id: `batch-${Date.now()}-${idx}`,
       referenceId: `TMW-WARD-${header.state.slice(0, 2).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -673,7 +687,7 @@ export async function submitBatchWardSheet(
       timestamp,
       status: 'pending',
       isExco,
-      excoLevel: isExco ? "Ward" : "None",
+      excoLevel: inferredLevel,
       role
     };
   });

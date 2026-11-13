@@ -68,7 +68,18 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
       const copy = [...prev];
       copy[index] = { ...copy[index], [field]: value };
       if (field === "role") {
-        copy[index].isExco = typeof value === "string" && value.toUpperCase().includes("EXCO");
+        const valStr = typeof value === "string" ? value : "";
+        const upper = valStr.toUpperCase();
+        copy[index].isExco =
+          !upper.includes("NON-EXCO") &&
+          (upper.includes("EXCO") ||
+            upper.includes("COORDINATOR") ||
+            upper.includes("LEAD") ||
+            upper.includes("SECRETARY") ||
+            upper.includes("TREASURER") ||
+            upper.includes("ADVISER") ||
+            upper.includes("AUDITOR") ||
+            upper.includes("DIRECTOR"));
       }
       return copy;
     });
@@ -316,7 +327,8 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
             <tbody className="divide-y divide-slate-200">
               {rows.map((row, index) => {
                 const isRowActive = Boolean(row.names || row.phone || row.vin);
-                const isRowExco = Boolean(row.isExco || row.role?.toUpperCase().includes("EXCO"));
+                const upperRole = (row.role || "").toUpperCase();
+                const isRowExco = Boolean(row.isExco || (!upperRole.includes("NON-EXCO") && upperRole.includes("EXCO")));
                 return (
                   <tr
                     key={row.sn}
@@ -437,6 +449,22 @@ export const WardSheetBatchForm: React.FC<WardSheetBatchFormProps> = ({
 
         {/* Role & Bank Datalists */}
         <datalist id="ward-role-suggestions">
+          <option value="Director General / National Coordinator" />
+          <option value="Deputy Director General" />
+          <option value="National Secretary" />
+          <option value="National Deputy Secretary" />
+          <option value="National Organising Secretary" />
+          <option value="National Deputy Organising Secretary" />
+          <option value="National Publicity Secretary" />
+          <option value="National Deputy Publicity Secretary" />
+          <option value="National Financial Secretary" />
+          <option value="National Treasurer" />
+          <option value="National Legal Adviser" />
+          <option value="National Auditor" />
+          <option value="National Welfare Secretary" />
+          <option value="National Youth Coordinator" />
+          <option value="National Women Coordinator" />
+          <option value="National Diaspora & International Relations Coordinator" />
           <option value="State Coordinator" />
           <option value="Deputy/Operations Lead" />
           <option value="State Secretary" />
