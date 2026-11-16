@@ -11,20 +11,16 @@ import { TMWLogo } from "./TMWLogo";
 import { APCLogo } from "./APCLogo";
 import { 
   Printer, 
-  Upload, 
   Camera, 
-  RotateCw, 
   ShieldCheck, 
-  CheckCircle2, 
-  Star, 
   Users, 
   QrCode as QrIcon, 
   X,
   Sparkles,
-  MapPin,
-  Calendar,
   CreditCard,
-  UserCheck
+  Phone,
+  Globe,
+  Mail
 } from "lucide-react";
 
 interface MemberIdCardProps {
@@ -51,7 +47,7 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
         width: 256,
         margin: 1,
         color: {
-          dark: "#064E3B", // Deep emerald green
+          dark: "#0A0A0A",
           light: "#FFFFFF",
         },
         errorCorrectionLevel: "H",
@@ -216,78 +212,108 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
         >
 
           {/* ========================================================================= */}
-          {/* FRONT OF ID CARD */}
+          {/* FRONT OF ID CARD (Matches Official Executive Prototype) */}
           {/* ========================================================================= */}
           <div 
             id="tmw-id-card-front"
-            className={`relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-2 border-emerald-800 overflow-hidden flex-col justify-between print:flex print:shadow-none print:border-2 print:border-emerald-900 print:rounded-xl print:break-inside-avoid select-none ${
+            className={`relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-[2.5px] border-[#0A5430] overflow-hidden flex-col justify-between print:flex print:shadow-none print:border-[2px] print:border-[#0A5430] print:rounded-xl print:break-inside-avoid select-none ${
               activeSide === "back" ? "hidden" : "flex"
             }`}
             style={{
-              boxShadow: "0 10px 25px -5px rgba(13, 92, 58, 0.15), 0 8px 10px -6px rgba(13, 92, 58, 0.1)"
+              boxShadow: "0 10px 25px -5px rgba(10, 84, 48, 0.16), 0 8px 10px -6px rgba(10, 84, 48, 0.1)"
             }}
           >
-              {/* Background Guilloche Security Texture & Subtle Gradient */}
-              <div 
-                className="absolute inset-0 pointer-events-none opacity-5 bg-[radial-gradient(#0D5C3A_1px,transparent_1px)] [background-size:10px_10px]"
-              />
+              {/* Top-left emerald & gold sweeping corner accent */}
+              <svg
+                viewBox="0 0 120 75"
+                className="absolute top-0 left-0 w-24 h-16 pointer-events-none select-none z-0"
+                preserveAspectRatio="none"
+              >
+                <path d="M0,0 L95,0 C55,8 28,28 0,72 Z" fill="#0A5430" />
+                <path d="M95,0 C55,8 28,28 0,72 L0,64 C24,25 50,7 84,0 Z" fill="#D4AF37" opacity="0.85" />
+              </svg>
 
-              {/* Watermark Logo in center */}
-              <div className="absolute right-3 bottom-8 opacity-[0.06] pointer-events-none select-none">
-                <TMWLogo size={180} />
+              {/* Subtle right watermark behind QR area */}
+              <div className="absolute right-3 bottom-10 opacity-[0.07] pointer-events-none select-none z-0">
+                <TMWLogo size={115} className="grayscale contrast-125" />
               </div>
 
-              {/* Top APC Tri-Color Flag Ribbon */}
-              <div className="h-2 w-full flex">
-                <div className="w-1/4 bg-[#008751]" /> {/* APC Green */}
-                <div className="w-1/4 bg-[#FFFFFF] border-y border-slate-200" /> {/* White */}
-                <div className="w-1/4 bg-[#0077C8]" /> {/* Sky Blue */}
-                <div className="w-1/4 bg-[#DC2626]" /> {/* Red */}
-              </div>
+              {/* Subtle light wave background above bottom footer */}
+              <svg
+                viewBox="0 0 400 70"
+                className="absolute bottom-7 left-0 w-full h-14 pointer-events-none select-none z-0"
+                preserveAspectRatio="none"
+              >
+                <path d="M0,38 Q120,10 245,42 T400,26 L400,70 L0,70 Z" fill="#0A5430" opacity="0.08" />
+                <path d="M0,48 Q130,22 250,48 T400,34 L400,70 L0,70 Z" fill="#0A5430" opacity="0.14" />
+                <path d="M0,48 Q125,28 245,54 T400,40" fill="none" stroke="#D4AF37" strokeWidth="2.5" opacity="0.85" />
+              </svg>
 
-              {/* Card Header */}
-              <div className="px-3 pt-2.5 pb-2 bg-gradient-to-b from-emerald-50/90 to-white border-b border-emerald-900/15">
+              {/* Top Header Block: TMW Logo | Center Institution Title | APC Logo */}
+              <div className="relative z-10 px-2.5 pt-2 pb-1.5 bg-gradient-to-b from-white/95 to-white/90">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <TMWLogo size={40} className="ring-1 ring-emerald-800/30" />
-                    <div>
-                      <h4 className="text-[12.5px] font-black text-[#0D5C3A] tracking-tight leading-tight uppercase font-sans">
-                        TINUBU MOVEMENT WORLDWIDE
-                      </h4>
-                      <p className="text-[8px] font-bold text-slate-700 leading-tight">
-                        National Support &amp; Campaign Coordination Institution
-                      </p>
-                      <p className="text-[7.5px] font-extrabold text-red-600 tracking-wide uppercase leading-tight">
-                        Renewed Hope · Renewed Nigeria · Brighter Future
-                      </p>
+                  {/* Left: TMW Seal + vertical gold hairline */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="p-0.5 rounded-full bg-white shadow-xs border border-[#0A5430]/30">
+                      <TMWLogo size={42} className="ring-1 ring-[#0A5430]/30" />
+                    </div>
+                    <div className="w-[1.5px] h-10 bg-gradient-to-b from-[#B38E2C] via-[#9E8B3B] to-[#B38E2C]" />
+                  </div>
+
+                  {/* Center: Institution Title & Slogan */}
+                  <div className="flex-1 text-center min-w-0 px-0.5">
+                    <h4 className="text-[11px] sm:text-[12px] font-black text-[#084C28] tracking-tight leading-[1.06] uppercase font-sans">
+                      TINUBU MOVEMENT
+                      <br />
+                      WORLDWIDE (TMW)
+                    </h4>
+                    <p className="text-[6.8px] sm:text-[7.2px] font-bold text-slate-900 leading-tight mt-0.5 truncate">
+                      National Support &amp; Campaign Coordination Institution
+                    </p>
+                    <p className="text-[6px] sm:text-[6.4px] font-extrabold text-[#D92027] tracking-tight uppercase leading-tight mt-0.5 truncate">
+                      RENEWED HOPE • RENEWED NIGERIA • BRIGHTER FUTURE
+                    </p>
+                  </div>
+
+                  {/* Right: vertical gold hairline + APC Official Logo */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="w-[1.5px] h-10 bg-gradient-to-b from-[#B38E2C] via-[#9E8B3B] to-[#B38E2C]" />
+                    <div className="w-10 h-10 rounded-full p-0.5 bg-white border-[1.5px] border-[#C89B2B] shadow-xs flex items-center justify-center overflow-hidden">
+                      <img
+                        src="/assets/aistudio/apc_6f5b68a5.webp"
+                        alt="All Progressives Congress (APC) Official Logo"
+                        className="w-full h-full object-contain select-none"
+                      />
                     </div>
                   </div>
-
-                  {/* APC Official Logo at Top Right */}
-                  <div className="flex flex-col items-center shrink-0">
-                    <img
-                      src="/assets/aistudio/apc_6f5b68a5.webp"
-                      alt="All Progressives Congress (APC) Official Logo"
-                      className="w-11 h-11 object-contain drop-shadow-xs select-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Sub-strip title */}
-                <div className="mt-1 px-2 py-0.5 bg-[#0D5C3A] text-white rounded text-[7.5px] font-extrabold tracking-widest uppercase flex items-center justify-between">
-                  <span>OFFICIAL MEMBERSHIP IDENTITY CARD</span>
-                  <span className="font-mono text-[8px] text-emerald-200">{record.referenceId}</span>
                 </div>
               </div>
 
-              {/* Card Main Body */}
-              <div className="px-3 py-2 flex items-stretch gap-2.5 relative z-10 flex-1">
+              {/* Full-Width Gold & Emerald Ribbon Banner */}
+              <div className="relative z-10 w-full h-[22px] flex items-center justify-center overflow-hidden bg-gradient-to-r from-[#C89B2B] via-[#F2D574] to-[#C89B2B]">
+                {/* Angled Emerald Center Ribbon */}
+                <div
+                  className="w-[88%] h-full bg-[#0A5430] flex items-center justify-center px-3 shadow-xs"
+                  style={{
+                    clipPath: "polygon(3% 0%, 100% 0%, 97% 100%, 0% 100%)"
+                  }}
+                >
+                  <span className="text-[8.5px] sm:text-[9px] font-black tracking-[0.07em] text-white uppercase whitespace-nowrap">
+                    {record.isExco && record.excoLevel === "National"
+                      ? "OFFICIAL NATIONAL LEADERSHIP IDENTITY CARD"
+                      : "OFFICIAL MEMBERSHIP IDENTITY CARD"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Main Card Body: Left Passport | Center Member Particulars | Right QR Code */}
+              <div className="relative z-10 px-3 py-1.5 flex items-center justify-between gap-2.5 flex-1 min-h-0">
                 
-                {/* Left Column: Passport Photo */}
-                <div className="flex flex-col items-center shrink-0 w-24">
+                {/* Left Column: Passport Photo Placeholder */}
+                <div className="flex flex-col items-center justify-center shrink-0">
                   <div 
                     onClick={() => fileInputRef.current?.click()}
-                    className="relative w-24 h-28 rounded-lg border-2 border-emerald-800 overflow-hidden bg-slate-100 flex items-center justify-center shadow-xs cursor-pointer group print:cursor-default"
+                    className="relative w-[84px] h-[102px] rounded-xl border-2 border-[#0A5430] overflow-hidden bg-[#EDEDED] flex items-center justify-center shadow-xs cursor-pointer group print:cursor-default"
                     title="Click to change passport photo"
                   >
                     {photoUrl ? (
@@ -297,12 +323,12 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center bg-slate-100 text-slate-400">
-                        <Users className="w-10 h-10 text-slate-300 mb-1" />
-                        <span className="text-[7px] font-bold text-slate-500 uppercase leading-tight print:hidden">
+                      <div className="w-full h-full flex flex-col items-center justify-center p-1.5 text-center bg-[#F1F3F2] text-slate-400">
+                        <Users className="w-9 h-9 text-slate-300 mb-1" />
+                        <span className="text-[6.5px] font-bold text-slate-500 uppercase leading-tight print:hidden">
                           Click to Affix Passport
                         </span>
-                        <span className="text-[7px] font-bold text-slate-400 uppercase leading-tight hidden print:inline">
+                        <span className="text-[6.5px] font-bold text-slate-400 uppercase leading-tight hidden print:inline">
                           PASSPORT PHOTO
                         </span>
                       </div>
@@ -314,100 +340,104 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                       <span>Upload</span>
                     </div>
                   </div>
+                </div>
 
-                  {/* Classification Pill underneath photo */}
-                  <div className="mt-1.5 w-full text-center">
-                    <span className={`inline-block w-full py-0.5 px-1 rounded text-[7.5px] font-black tracking-wider uppercase truncate border ${
-                      record.isExco
-                        ? "bg-amber-100 border-amber-300 text-amber-900"
-                        : "bg-emerald-100 border-emerald-300 text-emerald-950"
-                    }`}>
-                      {record.isExco ? `EXCO · ${record.excoLevel || "Ward"}` : "BONA FIDE MEMBER"}
+                {/* Center Column: Member Full Name, Designation Pill, Membership ID */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  {/* Member Full Name */}
+                  <div>
+                    <span className="text-[6.5px] uppercase font-extrabold tracking-wider text-[#084C28] block leading-none mb-0.5">
+                      MEMBER FULL NAME
+                    </span>
+                    <h3 className="text-[11px] sm:text-[11.5px] font-black text-slate-950 uppercase tracking-tight leading-[1.12] line-clamp-2">
+                      {record.fullName}
+                    </h3>
+                  </div>
+
+                  {/* Thin Gold Hairline */}
+                  <div className="h-[1px] w-full bg-gradient-to-r from-[#C89B2B] via-[#E5C158] to-transparent my-1" />
+
+                  {/* Designation */}
+                  <div>
+                    <span className="text-[6.5px] uppercase font-extrabold tracking-wider text-[#084C28] block leading-none mb-1">
+                      DESIGNATION
+                    </span>
+                    <div className="inline-block max-w-full px-2.5 py-0.5 rounded-md bg-[#0A5430] text-white shadow-2xs">
+                      <p className="text-[7.5px] sm:text-[8px] font-extrabold uppercase tracking-wide truncate leading-tight">
+                        {record.role || (record.isExco ? "EXECUTIVE OFFICER" : "GENERAL MEMBER")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Thin Gold Hairline */}
+                  <div className="h-[1px] w-full bg-gradient-to-r from-[#C89B2B] via-[#E5C158] to-transparent my-1" />
+
+                  {/* Membership ID */}
+                  <div>
+                    <span className="text-[6.5px] uppercase font-extrabold tracking-wider text-[#084C28] block leading-none mb-0.5">
+                      MEMBERSHIP ID
+                    </span>
+                    <span className="text-[10px] sm:text-[10.5px] font-black text-slate-950 uppercase tracking-tight leading-none block font-sans">
+                      {record.referenceId}
                     </span>
                   </div>
                 </div>
 
-                {/* Right Column: Member Particulars */}
-                <div className="flex-1 flex flex-col justify-between min-w-0">
-                  <div>
-                    {/* Full Name */}
-                    <div className="mb-1">
-                      <span className="text-[7px] uppercase font-bold text-slate-500 block leading-tight">
-                        Member Full Name
-                      </span>
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight leading-snug line-clamp-2">
-                        {record.fullName}
-                      </h3>
-                    </div>
-
-                    {/* Specific Role */}
-                    <div className="mb-1.5">
-                      <span className="text-[7px] uppercase font-bold text-slate-500 block leading-tight">
-                        Designation / Portfolio
-                      </span>
-                      <p className="text-[8.5px] font-bold text-[#0D5C3A] truncate leading-tight">
-                        {record.role || (record.isExco ? "Executive Committee Officer" : "Grassroots Member")}
-                      </p>
-                    </div>
-
-                    {/* Jurisdiction Grid */}
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[8px] bg-slate-50/90 p-1.5 rounded border border-slate-200">
-                      <div>
-                        <span className="text-[6.5px] uppercase font-bold text-slate-500 block">State</span>
-                        <span className="font-extrabold text-slate-800 truncate block">{record.state}</span>
-                      </div>
-                      <div>
-                        <span className="text-[6.5px] uppercase font-bold text-slate-500 block">LGA</span>
-                        <span className="font-extrabold text-slate-800 truncate block">{record.lga}</span>
-                      </div>
-                      <div>
-                        <span className="text-[6.5px] uppercase font-bold text-slate-500 block">Ward</span>
-                        <span className="font-extrabold text-slate-800 truncate block">{record.ward}</span>
-                      </div>
-                      <div>
-                        <span className="text-[6.5px] uppercase font-bold text-slate-500 block">VIN (Voter ID)</span>
-                        <span className="font-mono font-bold text-slate-800 truncate block">{record.vin || "REGISTERED"}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Polling Unit snippet */}
-                  <div className="mt-1 flex items-center justify-between text-[7px] text-slate-600">
-                    <span className="truncate max-w-[140px]">PU: {record.pollingUnit || "Designated Ward Polling Unit"}</span>
-                    <span className="font-bold text-emerald-800">Verified Member</span>
-                  </div>
-                </div>
-
-                {/* Far Right: QR Code for live smartphone scan verification */}
-                <div className="flex flex-col items-center justify-center shrink-0 w-18 pl-1 border-l border-slate-200">
-                  <div className="p-0.5 bg-white border border-emerald-800 rounded-md shadow-2xs">
+                {/* Right Column: QR Code + SCAN TO VERIFY Pill */}
+                <div className="flex flex-col items-center justify-center shrink-0 w-[76px] pl-1.5 border-l border-slate-300/70">
+                  <div className="p-1 bg-white border-[1.5px] border-[#0A5430] rounded-lg shadow-2xs">
                     {qrCodeDataUrl ? (
                       <img
                         src={qrCodeDataUrl}
                         alt="Scan to verify TMW membership"
-                        className="w-16 h-16 object-contain"
+                        className="w-[60px] h-[60px] object-contain"
                       />
                     ) : (
-                      <div className="w-16 h-16 bg-slate-100 flex items-center justify-center">
+                      <div className="w-[60px] h-[60px] bg-slate-100 flex items-center justify-center">
                         <QrIcon className="w-6 h-6 text-slate-400" />
                       </div>
                     )}
                   </div>
-                  <span className="text-[6px] font-black tracking-widest text-[#0D5C3A] uppercase mt-1 text-center leading-tight">
-                    SCAN TO VERIFY
-                  </span>
+                  <div className="mt-1 px-2 py-0.5 rounded-full bg-[#0A5430] text-white">
+                    <span className="text-[5.5px] font-black tracking-wider uppercase block leading-none whitespace-nowrap">
+                      SCAN TO VERIFY
+                    </span>
+                  </div>
                 </div>
 
               </div>
 
-              {/* Bottom Security Hologram Strip */}
-              <div className="px-3 py-1 bg-gradient-to-r from-[#0D5C3A] via-[#083b25] to-[#042818] text-white flex items-center justify-between text-[7px] font-semibold border-t border-emerald-950">
-                <span className="tracking-wider uppercase text-emerald-200">
-                  ★ TMW NATIONAL REGISTERED IDENTITY CARD ★
-                </span>
-                <span className="font-mono text-emerald-300">
-                  VALID: 2027 ELECTIONS
-                </span>
+              {/* Bottom Dark Emerald Footer with Gold Trim */}
+              <div className="relative z-10 bg-gradient-to-r from-[#064424] via-[#0A5430] to-[#064424] text-white px-3 py-1.5 border-t-[2px] border-[#D4AF37] flex items-center justify-between gap-2">
+                {/* Left: Card Owner Contact Phone */}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="w-5 h-5 rounded-full border border-white/80 flex items-center justify-center shrink-0 bg-white/10">
+                    <Phone className="w-2.5 h-2.5 text-white" />
+                  </div>
+                  <div className="min-w-0 leading-tight">
+                    <span className="text-[5.8px] font-extrabold uppercase tracking-wide text-emerald-100 block truncate">
+                      MEMBER CONTACT PHONE
+                    </span>
+                    <span className="text-[8.5px] font-black text-white tracking-wide block leading-none mt-0.5 truncate">
+                      {record.phone?.trim() || "NOT ON FILE"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Vertical Divider */}
+                <div className="w-[1px] h-5 bg-white/40 shrink-0" />
+
+                {/* Right: Website & Email */}
+                <div className="flex flex-col justify-center gap-0.5 text-[6.5px] font-semibold text-white shrink-0 leading-none">
+                  <div className="flex items-center gap-1">
+                    <Globe className="w-2.5 h-2.5 text-emerald-200 shrink-0" />
+                    <span>www.tinubumovement.org</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Mail className="w-2.5 h-2.5 text-emerald-200 shrink-0" />
+                    <span>info@tinubumovement.org</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -417,11 +447,11 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
           {/* ========================================================================= */}
           <div 
             id="tmw-id-card-back"
-            className={`relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-2 border-emerald-800 overflow-hidden flex-col justify-between print:flex print:shadow-none print:border-2 print:border-emerald-900 print:rounded-xl print:break-inside-avoid select-none ${
+            className={`relative w-full aspect-[1.586/1] bg-white rounded-2xl shadow-xl border-[2.5px] border-[#0A5430] overflow-hidden flex-col justify-between print:flex print:shadow-none print:border-[2px] print:border-[#0A5430] print:rounded-xl print:break-inside-avoid select-none ${
               activeSide === "front" ? "hidden" : "flex"
             }`}
             style={{
-              boxShadow: "0 10px 25px -5px rgba(13, 92, 58, 0.15), 0 8px 10px -6px rgba(13, 92, 58, 0.1)"
+              boxShadow: "0 10px 25px -5px rgba(10, 84, 48, 0.16), 0 8px 10px -6px rgba(10, 84, 48, 0.1)"
             }}
           >
               {/* Background watermark */}
@@ -438,10 +468,10 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
               </div>
 
               {/* Back Header */}
-              <div className="px-3 py-1.5 bg-[#0D5C3A] text-white flex items-center justify-between">
+              <div className="px-3 py-1.5 bg-[#0A5430] text-white flex items-center justify-between border-b border-[#D4AF37]">
                 <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
-                  <span className="text-[8px] font-extrabold uppercase tracking-widest text-emerald-100">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-200" />
+                  <span className="text-[8px] font-extrabold uppercase tracking-widest text-emerald-50">
                     TMW NATIONAL CONSTITUTION &amp; CONDITIONS
                   </span>
                 </div>
@@ -456,7 +486,7 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                   <p className="font-bold text-slate-900 text-center uppercase tracking-wide border-b border-slate-200 pb-0.5">
                     TERMS &amp; REGULATIONS OF MEMBERSHIP
                   </p>
-                  <ol className="list-decimal list-inside space-y-0.8 text-slate-600">
+                  <ol className="list-decimal list-inside space-y-0.5 text-slate-600">
                     <li>
                       This identity card certifies that the named holder is a registered, bona fide member of <strong>Tinubu Movement Worldwide (TMW)</strong> affiliated with the All Progressives Congress (APC).
                     </li>
@@ -472,11 +502,11 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                   </ol>
                 </div>
 
-                {/* Signatures & Seal Block */}
-                <div className="mt-1 pt-1 border-t border-slate-200 flex items-end justify-between">
+                {/* Signatures Block (Engraved APC Seal image & text removed as requested) */}
+                <div className="mt-1 pt-1 border-t border-slate-200 flex items-end justify-between gap-4">
                   {/* Director General Signature */}
-                  <div className="text-center w-28">
-                    <div className="h-6 flex items-center justify-center">
+                  <div className="text-center w-32">
+                    <div className="h-7 flex items-center justify-center">
                       <span className="font-serif italic font-bold text-slate-800 text-[11px] select-none tracking-wider">
                         DirectorGen.
                       </span>
@@ -487,20 +517,6 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
                       </span>
                       <span className="text-[5.5px] text-slate-500 block">TMW National Directorate</span>
                     </div>
-                  </div>
-
-                  {/* Engraved APC Logo Medallion */}
-                  <div className="flex flex-col items-center justify-end">
-                    <div className="relative w-9 h-9 rounded-full p-0.5 bg-white border-2 border-amber-500 shadow-2xs flex items-center justify-center ring-1 ring-amber-300 overflow-hidden">
-                      <img
-                        src="/assets/aistudio/apc_6f5b68a5.webp"
-                        alt="Engraved APC Official Emblem"
-                        className="w-full h-full object-contain select-none drop-shadow-2xs"
-                      />
-                    </div>
-                    <span className="text-[5px] font-black uppercase tracking-wider text-slate-700 mt-0.5">
-                      ENGRAVED APC SEAL
-                    </span>
                   </div>
 
                   {/* National Secretary & Strategist Signature */}
@@ -542,12 +558,12 @@ export const MemberIdCard: React.FC<MemberIdCardProps> = ({ record, onClose }) =
               </div>
 
               {/* Bottom footer bar */}
-              <div className="px-3 py-1 bg-slate-900 text-white flex items-center justify-between text-[6.5px]">
-                <span className="text-slate-300">
+              <div className="px-3 py-1 bg-[#064424] text-white flex items-center justify-between text-[6.5px] border-t border-[#D4AF37]">
+                <span className="text-emerald-100">
                   All Progressives Congress (APC) Support Platform
                 </span>
-                <span className="font-bold text-emerald-400">
-                  www.tmw-nigeria.org
+                <span className="font-bold text-emerald-300">
+                  www.tinubumovement.org
                 </span>
               </div>
             </div>
